@@ -64,6 +64,8 @@ export default function App() {
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const files = Array.from(event.target.files ?? []);
       const count = art.loadLocalFiles(files);
+      // Allow re-selecting the same folder later, including after a miss.
+      event.target.value = '';
 
       if (count === 0) {
         dialog.notify(
@@ -74,8 +76,6 @@ export default function App() {
       }
 
       setSetting('imageSource', 'local');
-      // Allow re-selecting the same folder later.
-      event.target.value = '';
     },
     [art, dialog, setSetting],
   );

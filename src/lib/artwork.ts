@@ -117,11 +117,17 @@ export function previousIndex(current: number, length: number): number {
 export class LocalMediaLibrary {
   private urls: string[] = [];
 
-  /** Replaces the current set, revoking the previous one. */
+  /**
+   * Replaces the current set, revoking the previous one. A selection with no
+   * images returns [] and leaves the current set untouched: revoking first
+   * would kill the URL of the picture on screen, and the album would go blank
+   * because someone opened the wrong folder.
+   */
   replace(files: File[]): Artwork[] {
-    this.revokeAll();
-
     const images = files.filter((file) => file.type.startsWith('image/'));
+    if (images.length === 0) return [];
+
+    this.revokeAll();
     // Stable, human-meaningful ordering rather than filesystem order.
     images.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
 

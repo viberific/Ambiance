@@ -44,6 +44,23 @@
   --text-tv-xl: 2.5rem;
   --text-tv-2xl: 4rem;
   --text-tv-clock: 6rem;
+
+  /* Dialogs settle into place instead of snapping on. Slow enough to read as
+     intentional from across the room, quick enough to never feel like a wait. */
+  --animate-dialog-backdrop: dialog-backdrop 320ms ease-out both;
+  --animate-dialog-panel: dialog-panel 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+
+  @keyframes dialog-backdrop {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes dialog-panel {
+    from {
+      opacity: 0;
+      transform: translateY(1rem) scale(0.97);
+    }
+  }
 }
 
 :root {

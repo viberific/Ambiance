@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { portableArtworkUrl, resolveArtworkUrl } from '../src/lib/artwork';
+import { LocalMediaLibrary, portableArtworkUrl, resolveArtworkUrl } from '../src/lib/artwork';
 
 /*
  * AND-15: the screensaver renders in a second WebView on a file:// origin. It
@@ -67,5 +67,39 @@ describe('resolveArtworkUrl', () => {
   it('returns null rather than throwing on an unusable base', () => {
     expect(resolveArtworkUrl('assets/x.svg', '')).toBeNull();
     expect(resolveArtworkUrl(null, BASE)).toBeNull();
+  });
+});
+
+describe('LocalMediaLibrary', () => {
+  it('keeps the current album when a folder with no images is picked', () => {
+    const created: string[] = [];
+    const revoked: string[] = [];
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = () => {
+      const url = `blob:test/${created.length}`;
+      created.push(url);
+      return url;
+    };
+    URL.revokeObjectURL = (url: string) => {
+      revoked.push(url);
+    };
+
+    try {
+      const library = new LocalMediaLibrary();
+      const first = library.replace([new File([''], 'a.jpg', { type: 'image/jpeg' })]);
+      expect(first).toHaveLength(1);
+
+      // A folder of documents: nothing changes, nothing is revoked.
+      expect(library.replace([new File([''], 'notes.txt', { type: 'text/plain' })])).toEqual([]);
+      expect(revoked).toEqual([]);
+
+      // A real replacement still revokes the old set.
+      library.replace([new File([''], 'b.jpg', { type: 'image/jpeg' })]);
+      expect(revoked).toEqual(['blob:test/0']);
+    } finally {
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+    }
   });
 });

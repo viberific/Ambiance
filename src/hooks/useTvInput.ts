@@ -37,7 +37,6 @@ export function useTvInput(options: UseTvInputOptions): UseTvInputResult {
   const [uiVisible, setUiVisible] = useState(true);
   const uiTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const menuTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const ignoreNextPopState = useRef(false);
 
   const handlers = useRef({ onCloseMenu, onOpenMenu, onPrevious, onNext });
   handlers.current = { onCloseMenu, onOpenMenu, onPrevious, onNext };
@@ -78,10 +77,6 @@ export function useTvInput(options: UseTvInputOptions): UseTvInputResult {
   // The TV hardware back button closes the menu rather than exiting the app.
   useEffect(() => {
     const onPopState = () => {
-      if (ignoreNextPopState.current) {
-        ignoreNextPopState.current = false;
-        return;
-      }
       if (menuOpen) handlers.current.onCloseMenu();
     };
     window.addEventListener('popstate', onPopState);
