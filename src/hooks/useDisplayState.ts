@@ -139,22 +139,54 @@ export function useDisplayState(options: UseDisplayStateOptions): UseDisplayStat
     }
   }, []);
 
+  /*
+   * Sampling is keyed on the telemetry *object*, which the poller replaces on
+   * every read. Keying on `telemetry.motion` / `telemetry.lux` meant a reading
+   * identical to the last one was never sampled: in a dark, still room (lux 0,
+   * no motion, every second) the window received one sample and then nothing,
+   * never filled, and the screen never went to sleep. The ref stops re-runs
+   * caused by anything else (isScreenBlack flipping) counting as a new sample.
+   */
+  const lastSample = useRef<Telemetry | null>(null);
+  /** True while the screen is black because the room is dark, not because it is empty. */
+  const blackForDarkness = useRef(false);
+
   useEffect(() => {
     if (!connected) {
       // No sensor: don't blank the screen on the strength of fabricated motion.
       motionWindow.clear();
       clearSleepTimer();
+      lastSample.current = null;
+      blackForDarkness.current = false;
       setIsScreenBlack(false);
       return;
     }
 
-    motionWindow.push(telemetry.motion);
+    if (lastSample.current !== telemetry) {
+      lastSample.current = telemetry;
+      motionWindow.push(telemetry.motion);
+    }
 
     // Black Mode: below the lux threshold the panel stays black regardless of
-    // motion, so a dark room never gets a glowing rectangle in it.
-    if (settings.blackModeEnabled && telemetry.lux <= settings.blackModeThreshold) {
+    // motion, so a dark room never gets a glowing rectangle in it. Once black,
+    // the light must clear the threshold by a margin to wake it, so a reading
+    // hovering at the threshold cannot flicker the screen every second.
+    const wakeAbove = settings.blackModeThreshold + Math.max(2, settings.blackModeThreshold * 0.2);
+    const isDark =
+      telemetry.lux <= (blackForDarkness.current ? wakeAbove : settings.blackModeThreshold);
+    if (settings.blackModeEnabled && isDark) {
       clearSleepTimer();
+      blackForDarkness.current = true;
       setIsScreenBlack(true);
+      return;
+    }
+
+    // The lights came back on (or Black Mode was switched off): darkness was
+    // the only reason the screen was black, so lift it rather than waiting for
+    // someone to walk past the sensor.
+    if (blackForDarkness.current) {
+      blackForDarkness.current = false;
+      setIsScreenBlack(false);
       return;
     }
 
@@ -174,8 +206,7 @@ export function useDisplayState(options: UseDisplayStateOptions): UseDisplayStat
       );
     }
   }, [
-    telemetry.motion,
-    telemetry.lux,
+    telemetry,
     connected,
     isScreenBlack,
     settings.blackModeEnabled,

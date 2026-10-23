@@ -35,6 +35,8 @@ export class ErrorBoundary extends Component<Props, State> {
     // which is realistically the only debugging channel available.
     console.error('[AmbientCanvas] Unhandled render error', error, info.componentStack);
 
+    // Several errors can be caught in one commit; run exactly one countdown.
+    if (this.timer !== null) return;
     this.timer = setInterval(() => {
       this.setState((previous) => {
         if (previous.countdown <= 1) {

@@ -63,9 +63,36 @@ export function statusUrl(target: string): string {
   return `http://${target}/api/status`;
 }
 
+/**
+ * Reduces a stored sensor name to the bare room name.
+ *
+ * FW-11: firmware before phase6 re-formatted its stored name on every boot,
+ * cutting it to 24 characters *including* the old suffix and appending a new
+ * one, so "Living Room" came back from a power cut as "Living Room - ambient
+ * tv - ambient tv sensor". The damage signature (exactly 24 characters ending
+ * in a cut-off start of the suffix) is recognised and repaired here, so the
+ * app shows the right name even for a sensor that has not been reflashed.
+ *
+ * Mirrors stripBroadcastSuffix() in firmware/ambient_sensor.ino.
+ */
+export function stripSensorNameSuffix(name: string): string {
+  let base = name;
+  while (base.endsWith(SENSOR_NAME_SUFFIX)) base = base.slice(0, -SENSOR_NAME_SUFFIX.length);
+
+  if (base.length === SENSOR_NAME_MAX) {
+    for (let cut = SENSOR_NAME_SUFFIX.length - 1; cut >= 3; cut--) {
+      if (base.endsWith(SENSOR_NAME_SUFFIX.slice(0, cut))) {
+        base = base.slice(0, -cut);
+        break;
+      }
+    }
+  }
+  return base;
+}
+
 /** Strips the broadcast suffix so the rename field shows just the room name. */
 export function displayName(name: string): string {
-  return name.endsWith(SENSOR_NAME_SUFFIX) ? name.slice(0, -SENSOR_NAME_SUFFIX.length) : name;
+  return stripSensorNameSuffix(name).trim();
 }
 
 /**
@@ -76,12 +103,13 @@ export function displayName(name: string): string {
  * this value straight into its JSON response without escaping.
  */
 export function normaliseSensorName(raw: string): string {
-  const cleaned = raw
+  const cleaned = stripSensorNameSuffix(raw)
     .trim()
     .replace(/\s+/g, ' ')
     .replace(/["\\]/g, '')
     .trim()
-    .slice(0, SENSOR_NAME_MAX);
+    .slice(0, SENSOR_NAME_MAX)
+    .trim();
   if (!cleaned) return '';
   return cleaned + SENSOR_NAME_SUFFIX;
 }

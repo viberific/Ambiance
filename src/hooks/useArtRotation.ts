@@ -76,6 +76,8 @@ export function useArtRotation(options: UseArtRotationOptions): UseArtRotationRe
       // WEB-09: LocalMediaLibrary revokes the previous object URLs before minting
       // new ones. The old handler leaked every URL it ever created.
       const artwork = library.replace(files);
+      // Nothing usable: keep showing the album that is already loaded.
+      if (artwork.length === 0) return 0;
       setLocalFiles(artwork);
       setIndex(0);
       return artwork.length;

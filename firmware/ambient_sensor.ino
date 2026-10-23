@@ -26,19 +26,23 @@
 
 /* ------------------------------------------------------------------ config */
 
-static const char *FIRMWARE_VERSION = "phase5-hardened-v1";
+static const char *FIRMWARE_VERSION = "phase6-hardened-v1";
 static const char *ADMIN_USER = "admin";
 static const char *DEFAULT_ADMIN_PASSWORD = "changeme";
 static const char *SETUP_PORTAL_SSID = "Ambient Setup";
 static const size_t MIN_ADMIN_PASSWORD_LENGTH = 10;
 /* Must match SENSOR_NAME_MAX in src/lib/sensor-utils.ts. */
 static const size_t SENSOR_NAME_MAX = 24;
+/* Must match SENSOR_NAME_SUFFIX in src/lib/sensor-utils.ts. */
+static const char *SENSOR_NAME_SUFFIX = " - ambient tv sensor";
 
 static const int MOTION_PIN = 27;
 static const int SENSOR_LED_PIN = 14;   // wire the sensor's LED pin here
 static const int RESET_BUTTON_PIN = 26;
 
 static const unsigned long RESET_HOLD_MS = 8000;
+static const unsigned long AUTH_LOCK_MS = 60000;
+static const int AUTH_MAX_FAILURES = 5;
 static const unsigned long SENSOR_INTERVAL_MS = 250;
 static const unsigned long SERIAL_INTERVAL_MS = 2000;
 static const unsigned long OTA_HEALTH_DELAY_MS = 15000;
@@ -73,7 +77,9 @@ String adminPasswordSalt = "";
 bool usingDefaultPassword = true;
 
 int failedAuthCount = 0;
-unsigned long authLockUntilMs = 0;
+/* FW-12: a start time plus a flag, never an absolute deadline. See checkAdminCredentials(). */
+bool authLocked = false;
+unsigned long authLockStartMs = 0;
 unsigned long resetPressStartMs = 0;
 
 /* OTA */
@@ -92,7 +98,10 @@ mbedtls_sha256_context otaSha256Ctx;
  * "not declared in this scope" errors. Explicit prototypes.
  */
 void sendCors();
+enum AuthResult { AUTH_OK, AUTH_LOCKED, AUTH_BAD };
+AuthResult checkAdminCredentials();
 bool requireAdminAuth();
+void eraseEverythingAndRestart();
 bool requirePasswordRotationForSensitiveWrite();
 String buildStatusJson();
 String buildAdminPageHtml();
@@ -222,14 +231,43 @@ bool isDefaultPasswordActive() {
   return usingDefaultPassword;
 }
 
+/*
+ * FW-11: the stored name already carries the broadcast suffix, and setup() ran
+ * it through buildBroadcastName() again on every boot. That cut it to 24
+ * characters *including* the old suffix and appended a fresh one, so a sensor
+ * renamed "Living Room" came back from its next power cut as
+ * "Living Room - ambient tv". Names are now reduced to the bare room name
+ * before formatting, which makes formatting safe to repeat, and names already
+ * damaged that way are repaired.
+ *
+ * Mirrored by stripSensorNameSuffix() in src/lib/sensor-utils.ts.
+ */
+String stripBroadcastSuffix(const String &name) {
+  const String suffix = SENSOR_NAME_SUFFIX;
+  String base = name;
+  while (base.endsWith(suffix)) base = base.substring(0, base.length() - suffix.length());
+
+  // Damage signature: exactly 24 characters, ending in a cut-off start of the suffix.
+  if (base.length() == SENSOR_NAME_MAX) {
+    for (size_t cut = suffix.length() - 1; cut >= 3; cut--) {
+      if (base.endsWith(suffix.substring(0, cut))) {
+        base = base.substring(0, base.length() - cut);
+        break;
+      }
+    }
+  }
+  return base;
+}
+
 String buildBroadcastName(const String &baseName) {
-  String trimmed = baseName;
+  String trimmed = stripBroadcastSuffix(baseName);
   trimmed.trim();
   trimmed.replace("\"", "");
   trimmed.replace("\\", "");
-  if (trimmed.length() == 0) trimmed = "New Sensor";
   if (trimmed.length() > SENSOR_NAME_MAX) trimmed = trimmed.substring(0, SENSOR_NAME_MAX);
-  return trimmed + " - ambient tv sensor";
+  trimmed.trim();
+  if (trimmed.length() == 0) trimmed = "New Sensor";
+  return trimmed + SENSOR_NAME_SUFFIX;
 }
 
 /* --------------------------------------------------------------------- CORS */
@@ -254,10 +292,16 @@ String buildBroadcastName(const String &baseName) {
 void sendCors() {
   String origin = server.header("Origin");
   if (origin.length() > 0) {
+    /*
+     * FW-15: this used to test `origin.indexOf(localIp) >= 0`, a substring
+     * match, so a website at http://192.168.1.50.example.com was treated as
+     * the sensor itself. Origins are now compared exactly.
+     */
     String localIp = WiFi.localIP().toString();
     bool sameHostOrigin =
-      origin.indexOf(localIp) >= 0 ||
-      (hostName.length() > 0 && origin.indexOf(hostName) >= 0);
+      origin == "http://" + localIp ||
+      (hostName.length() > 0 &&
+       (origin == "http://" + hostName || origin == "http://" + hostName + ".local"));
     if (sameHostOrigin) {
       server.sendHeader("Access-Control-Allow-Origin", origin);
       server.sendHeader("Vary", "Origin");
@@ -279,44 +323,61 @@ void handleOptions() {
  * FW-07: authentication is performed manually rather than via
  * server.authenticate(), because that helper requires the plaintext password to
  * be held in RAM and stored in NVS. We now keep only a salted SHA-256 hash.
+ *
+ * FW-12: the lockout used to store an absolute deadline, `millis() + 60000`,
+ * and test `deadline > now`. millis() wraps to zero every 49.7 days, and after
+ * the wrap any old deadline is far in the future again: a lockout triggered on
+ * day 40 of uptime came back after the wrap and lasted another 40 days, during
+ * which the TV could not pair or rename. Elapsed time (`now - start`) is the
+ * only comparison that survives the wrap.
+ *
+ * Checks the request's credentials without responding or counting a failure,
+ * so the OTA upload can call it before writing anything (FW-10).
  */
-bool requireAdminAuth() {
-  unsigned long now = millis();
+AuthResult checkAdminCredentials() {
+  if (authLocked) {
+    if (millis() - authLockStartMs < AUTH_LOCK_MS) return AUTH_LOCKED;
+    authLocked = false;
+  }
 
-  if (authLockUntilMs > now) {
+  String header = server.header("Authorization");
+  if (!header.startsWith("Basic ")) return AUTH_BAD;
+
+  String encoded = header.substring(6);
+  encoded.trim();
+
+  unsigned char decoded[128];
+  size_t decodedLen = 0;
+  int rc = mbedtls_base64_decode(decoded, sizeof(decoded) - 1, &decodedLen,
+                                 (const unsigned char *)encoded.c_str(), encoded.length());
+  if (rc != 0 || decodedLen == 0) return AUTH_BAD;
+  decoded[decodedLen] = '\0';
+
+  String pair = String((char *)decoded);
+  int colon = pair.indexOf(':');
+  if (colon <= 0) return AUTH_BAD;
+
+  String user = pair.substring(0, colon);
+  String password = pair.substring(colon + 1);
+  return (user == ADMIN_USER && verifyAdminPassword(password)) ? AUTH_OK : AUTH_BAD;
+}
+
+/** Checks credentials, counts failures, and sends the refusal itself. */
+bool requireAdminAuth() {
+  AuthResult result = checkAdminCredentials();
+
+  if (result == AUTH_LOCKED) {
     sendCors();
     server.send(429, "application/json",
                 "{\"ok\":false,\"error\":\"too many attempts, try again shortly\"}");
     return false;
   }
 
-  String header = server.header("Authorization");
-  bool authorised = false;
-
-  if (header.startsWith("Basic ")) {
-    String encoded = header.substring(6);
-    encoded.trim();
-
-    unsigned char decoded[128];
-    size_t decodedLen = 0;
-    int rc = mbedtls_base64_decode(decoded, sizeof(decoded) - 1, &decodedLen,
-                                   (const unsigned char *)encoded.c_str(), encoded.length());
-    if (rc == 0 && decodedLen > 0) {
-      decoded[decodedLen] = '\0';
-      String pair = String((char *)decoded);
-      int colon = pair.indexOf(':');
-      if (colon > 0) {
-        String user = pair.substring(0, colon);
-        String password = pair.substring(colon + 1);
-        authorised = (user == ADMIN_USER) && verifyAdminPassword(password);
-      }
-    }
-  }
-
-  if (!authorised) {
+  if (result == AUTH_BAD) {
     failedAuthCount++;
-    if (failedAuthCount >= 5) {
-      authLockUntilMs = now + 60000;
+    if (failedAuthCount >= AUTH_MAX_FAILURES) {
+      authLocked = true;
+      authLockStartMs = millis();
       failedAuthCount = 0;
     }
     sendCors();
@@ -443,7 +504,7 @@ String buildAdminPageHtml() {
     "$('unpairBtn').addEventListener('click',async()=>{if(!confirm('Unpair this sensor from its current TV?'))return;"
     "try{const r=await fetch('/api/unpair',{method:'POST'});if(!r.ok){msg('Unpair failed ('+r.status+').',true);return;}"
     "msg('Sensor unpaired.');load();}catch(e){msg('Unpair failed: device unreachable.',true);}});"
-    "$('resetBtn').addEventListener('click',async()=>{if(!confirm('Factory reset? This clears pairing and saved settings.'))return;"
+    "$('resetBtn').addEventListener('click',async()=>{if(!confirm('Factory reset? This erases the name, pairing, admin password and Wi-Fi network. The sensor restarts into setup mode.'))return;"
     "try{const r=await fetch('/api/factory-reset',{method:'POST'});if(!r.ok){msg('Factory reset failed ('+r.status+').',true);return;}"
     "msg('Reset requested. Sensor is restarting...');}catch(e){msg('Factory reset failed: device unreachable.',true);}});"
     "$('otaInfoBtn').addEventListener('click',()=>msg('Upload a compiled ESP32 .bin. The device verifies a SHA-256 you supply, then restarts. Rollback protection only commits once the new image boots and reconnects.',false));"
@@ -576,14 +637,6 @@ void handlePair() {
   pairedTvId = tvId;
   preferences.putString("pairedTvId", pairedTvId);
 
-  // Pairing complete: the setup SoftAP is no longer needed. Shutting it down
-  // removes an open radio surface (see FW-05).
-  if (WiFi.getMode() == WIFI_AP_STA) {
-    WiFi.softAPdisconnect(true);
-    WiFi.mode(WIFI_STA);
-    Serial.println("[PAIR] SoftAP disabled after successful pairing.");
-  }
-
   server.send(200, "application/json", "{\"ok\":true,\"paired\":true}");
 }
 
@@ -602,12 +655,22 @@ void handleFactoryReset() {
   if (!requirePasswordRotationForSensitiveWrite()) return;
   sendCors();
 
-  preferences.clear();
-  pairedTvId = "";
-  roomName = buildBroadcastName("New Sensor");
-
   server.send(200, "application/json", "{\"ok\":true,\"reset\":true,\"restarting\":true}");
-  delay(250);
+  delay(250);  // let the response leave before the radio goes down
+  eraseEverythingAndRestart();
+}
+
+/*
+ * FW-13: factory reset used to clear only this app's own settings. The Wi-Fi
+ * network name and password live in a separate store owned by the Wi-Fi
+ * driver, so a "reset" sensor still knew the home Wi-Fi password, which matters
+ * the moment it is given away or sold. Both the admin endpoint and the
+ * physical button now erase both, and the sensor restarts into setup mode.
+ */
+void eraseEverythingAndRestart() {
+  preferences.clear();
+  WiFi.disconnect(true, true);  // second argument erases the saved network
+  delay(100);
   ESP.restart();
 }
 
@@ -658,6 +721,21 @@ void handleOtaUpload() {
     otaValidationFailed = false;
     otaFailureReason = "";
     otaChecksumActive = false;
+
+    /*
+     * FW-10: the password used to be checked only in handleOtaFinish(), which
+     * runs after the whole upload. By then this callback had already written
+     * the image and Update.end(true) had made it the boot image, so a request
+     * with no password was refused but its firmware still took over at the next
+     * power cut. Nothing is written now unless the request is authorised and
+     * the factory password has been changed. handleOtaFinish() still sends the
+     * matching 401 / 428 / 429 and counts the failure.
+     */
+    if (checkAdminCredentials() != AUTH_OK || isDefaultPasswordActive()) {
+      otaValidationFailed = true;
+      otaFailureReason = "not authorised";
+      return;
+    }
 
     // FW-01: these headers are only readable because setup() now collects them.
     String requestedVersion = server.header("X-Firmware-Version");
@@ -773,13 +851,16 @@ void handleOtaFinish() {
 /* ------------------------------------------------------------------ network */
 
 void setupNetwork() {
-  WiFi.mode(WIFI_AP_STA);
+  WiFi.mode(WIFI_STA);
 
   WiFiManager wm;
   wm.setConfigPortalTimeout(180);
 
+  // FW-11: offer the bare room name, so the 24-character field is not filled
+  // with the suffix and the name cannot be damaged on its way back.
+  String bareRoomName = stripBroadcastSuffix(roomName);
   WiFiManagerParameter custom_room_name("room", "Sensor Location (e.g., Living Room)",
-                                        roomName.c_str(), 24);
+                                        bareRoomName.c_str(), SENSOR_NAME_MAX);
   wm.addParameter(&custom_room_name);
 
   String customCSS =
@@ -808,35 +889,16 @@ void setupNetwork() {
   roomName = buildBroadcastName(String(custom_room_name.getValue()));
   preferences.putString("room", roomName);
 
-  if (pairedTvId.length() == 0) {
-    /*
-     * FW-05: the pairing SoftAP was previously opened with NO PASSWORD:
-     *     WiFi.softAP(apSsid.c_str());
-     * Anyone in radio range could join it and reach every admin endpoint
-     * directly. The AP is now WPA2-protected with a key derived from the
-     * device MAC, which is printed to serial and shown in the admin UI, and it
-     * is shut down the moment pairing succeeds.
-     */
-    String apSsid = roomName;
-    if (apSsid.length() > 31) apSsid = apSsid.substring(0, 31);
-
-    String apPassword = "ambient-" + macAddress;
-    apPassword.replace(":", "");
-    apPassword.toLowerCase();
-    if (apPassword.length() > 20) apPassword = apPassword.substring(0, 20);
-
-    WiFi.softAP(apSsid.c_str(), apPassword.c_str());
-
-    Serial.print("WiFi AP SSID: ");
-    Serial.println(apSsid);
-    Serial.print("WiFi AP password: ");
-    Serial.println(apPassword);
-    Serial.print("WiFi AP IP: ");
-    Serial.println(WiFi.softAPIP());
-  } else {
-    WiFi.mode(WIFI_STA);
-    Serial.println("Device is paired. SoftAP disabled (STA mode only).");
-  }
+  /*
+   * FW-14: this used to open a second hotspot, named after the room, until the
+   * sensor was paired. FW-05 gave it a password derived from the MAC address,
+   * but that MAC is printed in /api/status, in the hostname and in the
+   * hotspot's own broadcast, so anyone in radio range could work the password
+   * out. Nothing ever used the hotspot: the TV reaches the sensor over the home
+   * network, and first-time setup has its own portal (SETUP_PORTAL_SSID, above)
+   * that appears only when the sensor cannot join Wi-Fi. It is gone.
+   */
+  WiFi.mode(WIFI_STA);
 
   Serial.println("\n--- CONNECTED! ---");
   Serial.print("Room Name Saved As: ");
@@ -979,10 +1041,8 @@ void loop() {
     if (resetPressStartMs == 0) {
       resetPressStartMs = millis();
     } else if (millis() - resetPressStartMs >= RESET_HOLD_MS) {
-      Serial.println("[RESET] Hold detected. Clearing settings and restarting.");
-      preferences.clear();
-      delay(100);
-      ESP.restart();
+      Serial.println("[RESET] Hold detected. Erasing settings and Wi-Fi, then restarting.");
+      eraseEverythingAndRestart();
     }
   } else {
     resetPressStartMs = 0;

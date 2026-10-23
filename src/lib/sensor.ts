@@ -82,6 +82,10 @@ function classify(status: number, ok: boolean): SensorCallOutcome {
       return 'password_change_required';
     case 409:
       return 'already_paired_elsewhere';
+    // FW-12: the firmware's wrong-password lockout. This used to fall through to
+    // 'bad_request' and tell the user to update the sensor's firmware.
+    case 429:
+      return 'locked_out';
     case 400:
       return 'bad_request';
     case 0:
@@ -161,6 +165,8 @@ export function describeOutcome(outcome: SensorCallOutcome): string {
       return 'This sensor still has its factory password. Set a new one before pairing.';
     case 'already_paired_elsewhere':
       return 'This sensor is already paired to a different TV.';
+    case 'locked_out':
+      return 'Too many wrong passwords. The sensor is locked for one minute — wait, then try again.';
     case 'bad_request':
       return 'The sensor rejected the request. Check that its firmware is up to date.';
     case 'unreachable':

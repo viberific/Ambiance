@@ -3,8 +3,9 @@
  *
  * Reproduces the exact HTTP contract of firmware/ambient_sensor.ino, including
  * the failure modes that were previously invisible to the app: 401 when no
- * credentials are sent, 428 while the factory password is still set, and 409
- * when the sensor is already paired to another TV.
+ * credentials are sent, 428 while the factory password is still set, 409
+ * when the sensor is already paired to another TV, and 429 for a minute after
+ * five wrong passwords.
  *
  * Without this, those three paths could only be exercised by physically
  * reflashing an ESP32, which is why they went unnoticed for so long.
@@ -15,6 +16,8 @@
 
 import express from 'express';
 import type { Request, Response, NextFunction } from 'express';
+
+import { normaliseSensorName } from '../src/lib/sensor-utils';
 
 interface MockState {
   id: string;
@@ -100,26 +103,45 @@ app.get('/ui', (_req: Request, res: Response) =>
 app.get('/api/status', (_req: Request, res: Response) => res.json(statusPayload()));
 app.get('/api/root-status', (_req: Request, res: Response) => res.json(statusPayload()));
 
+/** FW-12: mirrors the firmware's lockout: five failures, then 429 for a minute. */
+const AUTH_LOCK_MS = 60_000;
+let failedAuthCount = 0;
+let authLockStartMs: number | null = null;
+
 /** WEB-02: mirrors the firmware's HTTP Basic requirement. */
 function requireAuth(req: Request, res: Response): boolean {
-  const header = req.headers.authorization ?? '';
-  if (!header.startsWith('Basic ')) {
+  if (authLockStartMs !== null) {
+    if (Date.now() - authLockStartMs < AUTH_LOCK_MS) {
+      res.status(429).json({ ok: false, error: 'too many attempts, try again shortly' });
+      return false;
+    }
+    authLockStartMs = null;
+  }
+
+  const fail = () => {
+    failedAuthCount += 1;
+    if (failedAuthCount >= 5) {
+      authLockStartMs = Date.now();
+      failedAuthCount = 0;
+    }
     res
       .status(401)
       .set('WWW-Authenticate', 'Basic realm="Ambient Sensor"')
       .json({ ok: false, error: 'authentication required' });
     return false;
-  }
+  };
+
+  const header = req.headers.authorization ?? '';
+  if (!header.startsWith('Basic ')) return fail();
 
   const decoded = Buffer.from(header.slice(6), 'base64').toString('utf8');
   const separator = decoded.indexOf(':');
   const user = decoded.slice(0, separator);
   const password = decoded.slice(separator + 1);
 
-  if (user !== 'admin' || password !== state.adminPassword) {
-    res.status(401).json({ ok: false, error: 'authentication required' });
-    return false;
-  }
+  if (user !== 'admin' || password !== state.adminPassword) return fail();
+
+  failedAuthCount = 0;
   return true;
 }
 
@@ -134,7 +156,8 @@ app.post('/api/name', (req: Request, res: Response) => {
   if (!requireAuth(req, res)) return;
   const name = typeof req.body?.name === 'string' ? req.body.name : '';
   if (!name) return res.status(400).json({ ok: false, error: 'missing name field' });
-  state.name = name;
+  // Stored exactly as the firmware's buildBroadcastName() would store it.
+  state.name = normaliseSensorName(name) || 'New Sensor - ambient tv sensor';
   return res.json({ ok: true, name: state.name });
 });
 

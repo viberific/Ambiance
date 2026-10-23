@@ -57,6 +57,31 @@ describe('sensor names', () => {
   it('round-trips through displayName', () => {
     expect(displayName(normaliseSensorName('Kitchen'))).toBe('Kitchen');
   });
+
+  // FW-11: formatting a name twice must not change it. Old firmware did this on
+  // every boot and the name gained junk each time.
+  it('is unchanged by formatting an already-formatted name', () => {
+    const once = normaliseSensorName('Living Room');
+    expect(normaliseSensorName(once)).toBe(once);
+  });
+
+  it('repairs names damaged by older firmware', () => {
+    expect(displayName('Living Room - ambient tv - ambient tv sensor')).toBe('Living Room');
+    expect(displayName('New Sensor - ambient tv  - ambient tv sensor')).toBe('New Sensor');
+    expect(normaliseSensorName('Living Room - ambient tv - ambient tv sensor')).toBe(
+      'Living Room - ambient tv sensor',
+    );
+  });
+
+  it('leaves a short name that happens to end like the suffix alone', () => {
+    expect(displayName('Shed - a - ambient tv sensor')).toBe('Shed - a');
+  });
+
+  it('keeps a full 24 character name intact', () => {
+    const full = 'Upstairs Master Bedroom2';
+    expect(full).toHaveLength(24);
+    expect(displayName(normaliseSensorName(full))).toBe(full);
+  });
 });
 
 describe('address helpers', () => {

@@ -3,7 +3,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { BUTTON_DANGER, BUTTON_PRIMARY, FIELD, cx } from './ui/styles';
+import { BUTTON_DANGER, BUTTON_PRIMARY, BUTTON_SECONDARY, FIELD, cx } from './ui/styles';
 
 /**
  * WEB-17: the app used window.alert() and window.confirm() for pairing errors,
@@ -92,14 +92,20 @@ export function Dialog({ request, onClose }: Props) {
     ? request.actions
     : [{ label: 'OK', variant: 'primary' }];
 
+  /*
+   * Close first, then act. An action that opens a follow-up dialog (a
+   * confirmation leading to a password prompt, say) calls show() from inside
+   * onSelect; closing afterwards wiped that new dialog off the screen before
+   * it ever rendered.
+   */
   const handleAction = (action: DialogAction) => {
-    action.onSelect?.();
     onClose();
+    action.onSelect?.();
   };
 
   const submitInput = () => {
-    request.input?.onSubmit(value);
     onClose();
+    request.input?.onSubmit(value);
   };
 
   return (
@@ -107,7 +113,7 @@ export function Dialog({ request, onClose }: Props) {
       role="dialog"
       aria-modal="true"
       aria-labelledby="ambient-dialog-title"
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 px-8 backdrop-blur-sm"
+      className="animate-dialog-backdrop fixed inset-0 z-[100] flex items-center justify-center bg-black/80 px-8 backdrop-blur-sm"
       onKeyDown={(event) => {
         trapFocus(event);
         if (event.key === 'Escape' || event.key === 'Backspace') {
@@ -121,7 +127,7 @@ export function Dialog({ request, onClose }: Props) {
     >
       <div
         ref={panelRef}
-        className="w-full max-w-2xl rounded-2xl border border-white/15 bg-canvas-surface/95 p-10 shadow-[0_24px_80px_rgba(0,0,0,0.7)]"
+        className="animate-dialog-panel w-full max-w-2xl rounded-2xl border border-white/15 bg-canvas-surface/95 p-10 shadow-[0_24px_80px_rgba(0,0,0,0.7)]"
       >
         <h2
           id="ambient-dialog-title"
@@ -166,7 +172,7 @@ export function Dialog({ request, onClose }: Props) {
                   ? BUTTON_PRIMARY
                   : action.variant === 'danger'
                     ? BUTTON_DANGER
-                    : 'tv-focusable rounded-lg border border-white/20 bg-white/5 px-8 py-3 text-tv-xs font-bold tracking-[0.25em] text-white/70 uppercase transition-colors hover:bg-white/10'
+                    : BUTTON_SECONDARY
               }
             >
               {action.label}
