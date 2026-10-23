@@ -463,3 +463,31 @@ overflow. The D-pad path was walked with the keyboard only.
   crossings could be exercised here.
 - The Updates pane's download and install path is native and still needs a
   published release on a real TV. Only its layout was checked.
+
+---
+
+## 1.5.0 — Audit pass: sleep, albums, and a sensor firmware hardening (2026-10-23)
+
+### App
+
+| ID | Fix | Where |
+| --- | --- | --- |
+| **WEB-31** | Motion is sampled on every reading, keyed on the telemetry object. Keying on `telemetry.motion`/`telemetry.lux` skipped identical readings, so a dark, still room (lux 0, no motion) sent one sample, the window never filled, and **the screen never slept.** | `src/hooks/useDisplayState.ts` |
+| **WEB-32** | Black Mode lifts when the lights come back on, with a hysteresis band so a reading at the threshold cannot flicker the screen. Previously it stayed black until someone walked past the sensor. | `src/hooks/useDisplayState.ts` |
+| **WEB-33** | Picking a folder with no images keeps the current album. `LocalMediaLibrary.replace` revoked the on-screen URLs first, blanking the album. The file input is also reset on a miss, so the same folder can be re-picked. | `src/lib/artwork.ts`, `src/hooks/useArtRotation.ts`, `src/App.tsx` |
+| **WEB-34** | Dialog actions close before running, so an action that opens a follow-up dialog no longer has it wiped instantly. | `src/components/Dialog.tsx` |
+| **WEB-35** | The error screen starts one reload countdown, not one per caught error. | `src/components/ErrorBoundary.tsx` |
+| **WEB-36** | Artwork is decoded off-screen and handed to the crossfade only once loaded, so a slow image no longer fades in as black and pops in mid-fade. | `src/components/ArtworkCanvas.tsx` |
+| **WEB-37** | Dialogs ease in; every button, chip and toggle sinks slightly on press. | `src/index.css`, `src/components/ui/styles.ts` |
+| **WEB-38** | `displayName` repairs sensor names damaged by FW-11, so they show correctly even before the sensor is reflashed. | `src/lib/sensor-utils.ts` |
+
+### Sensor firmware (`phase6-hardened-v1`, needs a reflash)
+
+| ID | Fix |
+| --- | --- |
+| **FW-10** | OTA checks the password **before writing anything**. It was checked only after the upload, by which point `Update.end(true)` had already made the image bootable — an unauthenticated upload was refused but still took over at the next restart. |
+| **FW-11** | The stored name is reduced to the bare room name before formatting. Re-formatting at every boot cut it to 24 characters *including* the suffix, so "Living Room" came back as "Living Room - ambient tv". Damaged names are repaired on boot. |
+| **FW-12** | The auth lockout measures elapsed time. It stored `millis() + 60000`, which after the 49.7-day `millis()` wrap brought an old lockout back for weeks. |
+| **FW-13** | Factory reset (endpoint and physical button) also erases the saved Wi-Fi network. |
+| **FW-14** | Removed the room-named pairing hotspot. Its FW-05 password was derived from the MAC, which the device publishes, and nothing used it. **Supersedes FW-05.** First-time setup still uses the `Ambient Setup` portal. |
+| **FW-15** | CORS compares the `Origin` exactly. A substring match let `http://<sensor-ip>.example.com` pass as the sensor. |
