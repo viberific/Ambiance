@@ -480,6 +480,7 @@ overflow. The D-pad path was walked with the keyboard only.
 | **WEB-36** | Artwork is decoded off-screen and handed to the crossfade only once loaded, so a slow image no longer fades in as black and pops in mid-fade. | `src/components/ArtworkCanvas.tsx` |
 | **WEB-37** | Dialogs ease in; every button, chip and toggle sinks slightly on press. | `src/index.css`, `src/components/ui/styles.ts` |
 | **WEB-38** | `displayName` repairs sensor names damaged by FW-11, so they show correctly even before the sensor is reflashed. | `src/lib/sensor-utils.ts` |
+| **WEB-39** | The firmware's 429 lockout is recognised as `locked_out` ("wait a minute, then try again"). It fell through to `bad_request`, which told the user to update the sensor's firmware. The mock sensor now reproduces the lockout and stores names exactly as the firmware does. | `src/lib/sensor.ts`, `src/lib/types.ts`, `mock/sensor-server.ts` |
 
 ### Sensor firmware (`phase6-hardened-v1`, needs a reflash)
 
@@ -491,3 +492,21 @@ overflow. The D-pad path was walked with the keyboard only.
 | **FW-13** | Factory reset (endpoint and physical button) also erases the saved Wi-Fi network. |
 | **FW-14** | Removed the room-named pairing hotspot. Its FW-05 password was derived from the MAC, which the device publishes, and nothing used it. **Supersedes FW-05.** First-time setup still uses the `Ambient Setup` portal. |
 | **FW-15** | CORS compares the `Origin` exactly. A substring match let `http://<sensor-ip>.example.com` pass as the sensor. |
+
+### Verified
+
+- `npm run verify` green: 85 tests.
+- Firmware compiled locally with arduino-cli and the current ESP32 core:
+  85% of flash, 15% of RAM, no new warnings.
+- The firmware's own name functions were compiled on the host against a
+  `String` shim and fed the same 14 names as the app, including damaged and
+  over-long ones: every result matched `normaliseSensorName`, and formatting
+  twice changed nothing.
+- The mock sensor answered five wrong passwords with 401 and then 429, and kept
+  refusing the correct password until the minute was up.
+
+### Not verified here
+
+- Nothing ran on a physical ESP32. The OTA password check, the Wi-Fi erase on
+  factory reset and the lockout across a real 49.7-day `millis()` wrap are
+  reasoned from the code, not observed on hardware.

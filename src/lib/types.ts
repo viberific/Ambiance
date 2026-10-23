@@ -67,6 +67,8 @@ export type SensorCallOutcome =
   | 'unauthorized'
   | 'password_change_required'
   | 'already_paired_elsewhere'
+  /** 429: five wrong passwords in a row; the firmware refuses writes for a minute. */
+  | 'locked_out'
   | 'bad_request'
   | 'unreachable';
 
