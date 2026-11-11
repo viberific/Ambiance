@@ -48,8 +48,20 @@ export function useDisplayState(options: UseDisplayStateOptions): UseDisplayStat
   const [profiles, setProfiles] = useState<Record<string, RoomProfile>>(() =>
     load<Record<string, RoomProfile>>('profiles', {}),
   );
-  const [luminance, setLuminanceState] = useState(60);
-  const [warmth, setWarmthState] = useState(200);
+  /*
+   * WEB-50: with no sensor, brightness and warmth are set by hand — and were
+   * forgotten on every restart, snapping back to 60% / 200K. They are now
+   * remembered separately from the learned per-light-level profiles.
+   */
+  const [manual] = useState<RoomProfile>(() => {
+    const stored = load<Partial<RoomProfile>>('manualDisplay', {});
+    return {
+      luminance: clampLuminance(typeof stored.luminance === 'number' ? stored.luminance : 60),
+      warmth: clampWarmth(typeof stored.warmth === 'number' ? stored.warmth : 200),
+    };
+  });
+  const [luminance, setLuminanceState] = useState(manual.luminance);
+  const [warmth, setWarmthState] = useState(manual.warmth);
   const [isScreenBlack, setIsScreenBlack] = useState(false);
   const [isOledDimmed, setIsOledDimmed] = useState(false);
 
@@ -109,12 +121,22 @@ export function useDisplayState(options: UseDisplayStateOptions): UseDisplayStat
 
   /** Persists the current slider values as the profile for this light bucket. */
   const commitProfile = useCallback(() => {
+    /*
+     * With no sensor there is no light level to learn against. This used to
+     * file the values under the "pitch dark" bucket anyway, so a brightness
+     * chosen by hand on a sensorless TV later became what a real sensor used
+     * for a dark room.
+     */
+    if (!connected) {
+      save('manualDisplay', { luminance, warmth });
+      return;
+    }
     setProfiles((previous) => {
       const next = { ...previous, [profileKey]: { luminance, warmth } };
       save('profiles', next);
       return next;
     });
-  }, [profileKey, luminance, warmth]);
+  }, [connected, profileKey, luminance, warmth]);
 
   /* ------------------------------------------------------------ motion/sleep */
 

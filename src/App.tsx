@@ -3,12 +3,13 @@
  */
 
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { Settings as SettingsIcon } from 'lucide-react';
+import { Moon, Settings as SettingsIcon } from 'lucide-react';
 
 import { ArtworkCanvas } from './components/ArtworkCanvas';
 import { Dialog, useDialog } from './components/Dialog';
 import { Overlays } from './components/Overlays';
 import { SettingsPanel } from './components/SettingsPanel';
+import { GLASS_POPOVER, cx } from './components/ui/styles';
 import { useAppUpdate } from './hooks/useAppUpdate';
 import { useArtRotation } from './hooks/useArtRotation';
 import { useDisplayState } from './hooks/useDisplayState';
@@ -53,6 +54,7 @@ export default function App() {
     menuOpen: showSettings,
     dialogOpen: dialog.request !== null,
     onCloseMenu: closeSettings,
+    onCloseDialog: dialog.close,
     onOpenMenu: openSettings,
     onPrevious: art.previous,
     onNext: art.next,
@@ -154,6 +156,7 @@ export default function App() {
     () => ({
       sensors: network.sensors,
       selectedSensorId: network.selectedSensorId,
+      tvId: network.tvId,
       telemetry: network.telemetry,
       connection: network.connection,
       isScanning: network.isScanning,
@@ -193,7 +196,7 @@ export default function App() {
       {/* Vignette */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-10 shadow-[inset_0_0_300px_rgba(0,0,0,0.8)]"
+        className="pointer-events-none absolute inset-0 z-10 shadow-[inset_0_0_18.75rem_rgba(0,0,0,0.8)]"
       />
 
       <Overlays
@@ -245,24 +248,28 @@ export default function App() {
 
       <div
         className={`absolute bottom-[4.75rem] left-1/2 z-30 flex -translate-x-1/2 flex-col items-center gap-5 transition-all duration-700 ${
-          showSettings || !uiVisible ? 'pointer-events-none scale-95 opacity-0' : 'opacity-100'
+          showSettings || !uiVisible ? 'pointer-events-none translate-y-3 opacity-0' : 'opacity-100'
         }`}
       >
         <button
           type="button"
           onClick={openSettings}
-          className="tv-focusable pointer-events-auto flex items-center gap-4 rounded-full border border-white/10 bg-canvas-surface/50 px-12 py-4 text-tv-xs tracking-[0.4em] text-canvas-gold/80 uppercase shadow-[0_20px_50px_rgba(0,0,0,0.5)] backdrop-blur-md transition-all hover:scale-105 hover:bg-canvas-surface/70 hover:text-canvas-gold"
+          className={cx(
+            GLASS_POPOVER,
+            'tv-focusable pointer-events-auto flex items-center gap-4 rounded-full px-12 py-4 text-tv-xs tracking-[0.4em] text-canvas-parchment/85 uppercase transition-[background-color,color,transform] duration-300 hover:scale-105 hover:text-white focus-visible:scale-105 focus-visible:text-white',
+          )}
         >
-          <SettingsIcon className="h-5 w-5 opacity-60" aria-hidden="true" />
+          <SettingsIcon className="h-5 w-5 text-canvas-gold" aria-hidden="true" />
           Adjust Settings
         </button>
 
         {display.isScreenBlack ? (
           <div
             role="status"
-            className="animate-pulse rounded-full border border-red-500/20 bg-red-900/60 px-10 py-3 text-tv-xs font-bold tracking-[0.3em] text-red-200 uppercase shadow-2xl backdrop-blur-xl"
+            className="flex items-center gap-3 rounded-full border border-white/10 bg-white/[0.06] px-8 py-3 text-tv-xs tracking-[0.3em] text-white/55 uppercase"
           >
-            Screen in power save mode
+            <Moon className="h-4 w-4" aria-hidden="true" />
+            Screen is asleep
           </div>
         ) : null}
       </div>

@@ -34,12 +34,12 @@ export function ScreensaverCard({ onInteract }: ScreensaverCardProps) {
   return (
     <div
       className={cx(
-        'rounded-xl border p-6',
+        'rounded-2xl border p-6',
         // Sage reads as "done" everywhere else in Power & Sleep; gold is the
         // colour of something still asking to be acted on.
         screensaver.selected
-          ? 'border-canvas-sage/30 bg-canvas-sage/5'
-          : 'border-canvas-gold/25 bg-canvas-gold/5',
+          ? 'border-canvas-sage/30 bg-canvas-sage/[0.08]'
+          : 'border-canvas-gold/25 bg-canvas-gold/[0.08]',
       )}
     >
       {/* Fixed row layout, no breakpoints — see the note in DisplaySection. */}
@@ -60,7 +60,7 @@ export function ScreensaverCard({ onInteract }: ScreensaverCardProps) {
             >
               {screensaver.selected ? 'Screensaver Is On' : 'Use As Screensaver'}
             </p>
-            <p className="max-w-xl text-tv-xs leading-relaxed text-white/50">
+            <p className="max-w-xl text-tv-xs leading-relaxed text-white/65">
               {screensaver.selected
                 ? 'Your TV will bring Ambient Canvas back on its own whenever it goes idle.'
                 : screensaver.canAssign
@@ -110,7 +110,7 @@ export function ScreensaverCard({ onInteract }: ScreensaverCardProps) {
           <button
             type="button"
             aria-expanded={showHelp}
-            className="tv-focusable mt-5 flex items-center gap-2 rounded-lg px-1 py-1 text-tv-xs tracking-widest text-white/40 uppercase transition-colors hover:text-white/70"
+            className="tv-focusable mt-5 flex items-center gap-2 rounded-lg px-1 py-1 text-tv-xs tracking-widest text-white/55 uppercase transition-colors hover:text-white/80 focus-visible:text-white/90"
             onClick={() => {
               onInteract();
               setShowHelp((open) => !open);
@@ -137,7 +137,7 @@ export function ScreensaverCard({ onInteract }: ScreensaverCardProps) {
                   pane that no longer scrolls, so it gets its own bounded box
                   rather than pushing the section off the bottom. */}
                 <div
-                  className="tv-scroll max-h-[18rem]"
+                  className="tv-scroll max-h-[18rem] rounded-2xl"
                   tabIndex={0}
                   role="region"
                   aria-label="Screensaver setup instructions"
@@ -155,7 +155,7 @@ export function ScreensaverCard({ onInteract }: ScreensaverCardProps) {
 
 function Instructions({ packageName }: { packageName: string }) {
   return (
-    <div className="mt-5 space-y-4 rounded-lg border border-white/10 bg-black/25 p-5 text-tv-xs leading-relaxed text-white/60">
+    <div className="mt-5 space-y-4 rounded-2xl border border-white/[0.07] bg-black/15 p-5 text-tv-xs leading-relaxed text-white/70">
       <p>
         Some Google TV models only offer Google&rsquo;s own screensaver and hide every other one.
         Ambient Canvas still works as a screensaver on those TVs &mdash; it is only the list that is
@@ -178,7 +178,7 @@ function Instructions({ packageName }: { packageName: string }) {
           {/* WEB-25: was `overflow-x-auto whitespace-pre`, i.e. a sideways
               scrollbar. Nothing in this app may scroll horizontally, and a
               D-pad cannot drive one anyway, so the commands wrap instead. */}
-          <pre className="mt-2 rounded-lg border border-white/10 bg-black/40 px-4 py-3 font-mono text-tv-xs break-words whitespace-pre-wrap text-canvas-parchment/80 select-text">
+          <pre className="mt-2 rounded-xl border border-white/10 bg-black/25 px-4 py-3 font-mono text-tv-xs break-words whitespace-pre-wrap text-canvas-parchment/80 select-text">
             {`adb connect 192.168.1.50\nadb shell pm grant ${packageName} android.permission.WRITE_SECURE_SETTINGS`}
           </pre>
         </li>

@@ -13,6 +13,8 @@ import {
   TOGGLE,
   TOGGLE_OFF,
   TOGGLE_ON,
+  TOGGLE_ON_SAGE,
+  LABEL,
   cx,
 } from '../ui/styles';
 import { ScreensaverCard } from './ScreensaverCard';
@@ -47,7 +49,7 @@ export function PowerSection({ settings, setSetting, onInteract }: PowerSectionP
           max={60}
           step={1}
           suffix="M"
-          gradientClasses="bg-gradient-to-r from-canvas-sage/10 to-canvas-sage/50"
+          gradientClasses="bg-linear-to-r from-canvas-sage/10 to-canvas-sage/60"
           thumbColor={BRAND.sage}
           onChange={(value) => {
             setSetting('powerSafeMinutes', value);
@@ -63,7 +65,7 @@ export function PowerSection({ settings, setSetting, onInteract }: PowerSectionP
           max={50}
           step={1}
           suffix=" LUX"
-          gradientClasses="bg-gradient-to-r from-black to-canvas-sage/30"
+          gradientClasses="bg-linear-to-r from-black/70 to-canvas-sage/40"
           thumbColor={BRAND.shadow}
           onChange={(value) => {
             setSetting('blackModeThreshold', value);
@@ -87,14 +89,11 @@ export function PowerSection({ settings, setSetting, onInteract }: PowerSectionP
             setSetting('blackModeEnabled', !settings.blackModeEnabled);
             onInteract();
           }}
-          className={cx(
-            TOGGLE,
-            settings.blackModeEnabled ? 'border-canvas-sage bg-black text-canvas-sage' : TOGGLE_OFF,
-          )}
+          className={cx(TOGGLE, settings.blackModeEnabled ? TOGGLE_ON_SAGE : TOGGLE_OFF)}
         >
           <EyeOff className="h-7 w-7" aria-hidden="true" />
           <span className="text-tv-xs font-bold tracking-widest uppercase">Black Mode</span>
-          <span className="line-clamp-2 text-center text-tv-xs normal-case opacity-60">
+          <span className="line-clamp-2 text-center text-tv-xs normal-case opacity-70">
             Recommended for OLED and Mini-LED panels
           </span>
         </button>
@@ -110,7 +109,7 @@ export function PowerSection({ settings, setSetting, onInteract }: PowerSectionP
         >
           <Sun className="h-7 w-7" aria-hidden="true" />
           <span className="text-tv-xs font-bold tracking-widest uppercase">Keep Awake</span>
-          <span className="line-clamp-2 text-center text-tv-xs normal-case opacity-60">
+          <span className="line-clamp-2 text-center text-tv-xs normal-case opacity-70">
             Stops the TV sleeping on its own timer
           </span>
         </button>
@@ -120,7 +119,7 @@ export function PowerSection({ settings, setSetting, onInteract }: PowerSectionP
 
       <div className="grid grid-cols-2 gap-8">
         <div>
-          <div className="mb-2 flex items-center gap-2 text-tv-xs font-bold tracking-widest text-white/40 uppercase">
+          <div className={cx(LABEL, 'mb-2 flex items-center gap-2')}>
             Motion Sensitivity
             <SettingTooltip text="How many consecutive motion readings are needed before the display wakes." />
           </div>
@@ -143,7 +142,7 @@ export function PowerSection({ settings, setSetting, onInteract }: PowerSectionP
         </div>
 
         <div>
-          <div className="mb-2 flex items-center gap-2 text-tv-xs font-bold tracking-widest text-white/40 uppercase">
+          <div className={cx(LABEL, 'mb-2 flex items-center gap-2')}>
             OLED Saver
             <SettingTooltip text="Minutes of stillness before overlays dim, reducing burn-in risk." />
           </div>

@@ -57,8 +57,15 @@ export async function probeTarget(
 export async function readSensor(
   sensor: Pick<SensorInfo, 'ip' | 'hostname'>,
   timeoutMs = 1200,
+  /** The address that answered last time, tried first. */
+  preferred?: string,
 ): Promise<ProbeResult | null> {
-  for (const target of sensorTargets(sensor)) {
+  const targets = sensorTargets(sensor);
+  if (preferred && targets.includes(preferred)) {
+    targets.splice(targets.indexOf(preferred), 1);
+    targets.unshift(preferred);
+  }
+  for (const target of targets) {
     const result = await probeTarget(target, timeoutMs);
     if (result) return result;
   }

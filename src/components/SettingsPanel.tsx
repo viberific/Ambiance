@@ -17,7 +17,7 @@ import { MediaSection } from './settings/MediaSection';
 import { PowerSection } from './settings/PowerSection';
 import { UpdatesSection } from './settings/UpdatesSection';
 import { SensorPanel, type SensorPanelProps } from './SensorPanel';
-import { cx } from './ui/styles';
+import { GLASS_PANEL, cx } from './ui/styles';
 import type { Settings } from '../lib/settings';
 import type { UseAppUpdateResult } from '../hooks/useAppUpdate';
 
@@ -57,7 +57,7 @@ const FOCUSABLE =
   'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"]):not([role="note"])';
 
 const RAIL_ITEM =
-  'tv-focusable flex items-center gap-3 rounded-xl border px-4 py-3 text-left text-tv-xs font-bold tracking-[0.2em] uppercase transition-colors';
+  'tv-focusable flex items-center gap-3 rounded-xl border px-4 py-3 text-left text-tv-xs font-bold tracking-[0.2em] uppercase transition-colors duration-200';
 
 export interface SettingsPanelProps {
   open: boolean;
@@ -98,6 +98,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
   const [active, setActive] = useState<SectionId>('display');
   const railRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
   const paneRef = useRef<HTMLDivElement>(null);
 
   /*
@@ -133,12 +134,28 @@ export function SettingsPanel(props: SettingsPanelProps) {
    */
   const onRailKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     const index = SECTIONS.findIndex((section) => section.id === active);
+    const onClose = event.target === closeRef.current;
 
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
       const delta = event.key === 'ArrowDown' ? 1 : -1;
-      const next = SECTIONS[(index + delta + SECTIONS.length) % SECTIONS.length];
-      if (!next) return;
+
+      /*
+       * WEB-41: Up and Down used to wrap around the five sections forever, and
+       * because this handler swallows both keys, nothing could ever carry the
+       * remote down to Close. It was on screen and unreachable. The rail now
+       * has real ends: Down from the last section lands on Close, and Up from
+       * Close returns to the section you were on.
+       */
+      if (onClose) {
+        if (delta === -1) focusRail();
+        return;
+      }
+      const next = SECTIONS[index + delta];
+      if (!next) {
+        if (delta === 1) closeRef.current?.focus();
+        return;
+      }
       setActive(next.id);
       onInteract();
       // The tabindex moves with the selection, so focus after React repaints.
@@ -171,7 +188,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
   return (
     <div
-      className="absolute inset-0 z-50 flex items-center justify-center bg-black/45 p-8 backdrop-blur-[2px]"
+      className="absolute inset-0 z-50 flex items-center justify-center p-8"
       onKeyDown={(event) => {
         if (event.key === 'Escape' || event.key === 'Backspace') {
           const target = event.target as HTMLElement;
@@ -182,6 +199,13 @@ export function SettingsPanel(props: SettingsPanelProps) {
         }
       }}
     >
+      {/*
+       * The dimming layer is a sibling of the panel, not its parent. A parent
+       * that is fading in cuts the panel's frosted blur off from the artwork
+       * behind it, so the glass would look flat until the fade finished.
+       */}
+      <div aria-hidden="true" className="animate-dialog-backdrop absolute inset-0 bg-black/25" />
+
       {/*
        * Fixed height, not max-height: the panel must not resize as you move
        * between sections, and `overflow-hidden` makes scrolling structurally
@@ -202,7 +226,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
         role="dialog"
         aria-modal="true"
         aria-label="Ambient Canvas settings"
-        className="grid h-[29rem] max-h-[90vh] w-[78rem] max-w-[94vw] grid-cols-[13rem_1fr] gap-10 overflow-hidden rounded-3xl border border-white/10 bg-canvas-surface/70 p-10 shadow-[0_1.5rem_5rem_rgba(0,0,0,0.6)]"
+        className={cx(
+          GLASS_PANEL,
+          'animate-dialog-panel relative grid h-[29rem] max-h-[90vh] w-[78rem] max-w-[94vw] grid-cols-[13rem_1fr] gap-10 overflow-hidden rounded-[2rem] p-10',
+        )}
       >
         <div
           ref={railRef}
@@ -228,8 +255,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 className={cx(
                   RAIL_ITEM,
                   selected
-                    ? 'border-canvas-gold bg-canvas-gold/10 text-canvas-gold'
-                    : 'border-transparent text-white/45 hover:bg-white/5 hover:text-white/70',
+                    ? 'border-white/15 bg-white/[0.1] text-canvas-gold shadow-[inset_0_0.0625rem_0_rgba(255,255,255,0.12)]'
+                    : 'border-transparent text-white/55 hover:bg-white/5 hover:text-white/80',
                 )}
               >
                 <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
@@ -244,11 +271,12 @@ export function SettingsPanel(props: SettingsPanelProps) {
            * why it disappeared whenever the menu overflowed.
            */}
           <button
+            ref={closeRef}
             type="button"
             onClick={onClose}
             className={cx(
               RAIL_ITEM,
-              'mt-auto border-white/15 text-white/60 hover:bg-white/10 hover:text-white/90',
+              'mt-auto border-white/10 bg-white/[0.04] text-white/60 hover:bg-white/10 hover:text-white/90 focus-visible:bg-white/10 focus-visible:text-white/90',
             )}
           >
             <X className="h-5 w-5 shrink-0" aria-hidden="true" />
@@ -256,7 +284,15 @@ export function SettingsPanel(props: SettingsPanelProps) {
           </button>
         </div>
 
-        <div ref={paneRef} className="min-w-0 overflow-hidden" onKeyDown={onPaneKeyDown}>
+        {/* Keyed on the section so each one drifts in as you move down the rail. */}
+        <div
+          key={active}
+          ref={paneRef}
+          // The negative margin and matching padding give focus rings room to
+          // show; without it the clip cut them off on controls at the pane edge.
+          className="animate-pane-in -m-4 min-w-0 overflow-hidden p-4"
+          onKeyDown={onPaneKeyDown}
+        >
           {active === 'display' ? (
             <DisplaySection
               settings={settings}

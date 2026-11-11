@@ -197,3 +197,18 @@ export function resolveArtworkUrl(url: string | null | undefined, base: string):
     return null;
   }
 }
+
+/**
+ * Wraps an address for use as a CSS `background-image`.
+ *
+ * WEB-52: the canvas wrote `url(${address})` with no quotes. That is only valid
+ * CSS when the address has no spaces, quotes or brackets in it — and the build
+ * turns every small bundled SVG into a `data:` address full of all three. The
+ * browser threw the whole declaration away, so in the installed app the three
+ * built-in pictures and both paper textures never appeared: a TV with no
+ * internet showed a blank dark screen, and the Grain slider did nothing.
+ * Quoted and escaped, any address is safe.
+ */
+export function cssUrl(address: string): string {
+  return `url("${address.replace(/["\\\n]/g, (c) => (c === '\n' ? '' : `\\${c}`))}")`;
+}

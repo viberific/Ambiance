@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from 'motion/react';
 
 import grainTexture from '../assets/textures/grain.svg';
 import paperTexture from '../assets/textures/paper.svg';
+import { cssUrl } from '../lib/artwork';
 import type { Artwork } from '../lib/types';
 
 export interface ArtworkCanvasProps {
@@ -91,7 +92,7 @@ export function ArtworkCanvas({ artwork, luminance, warmth, grainIntensity }: Ar
           <div
             className="absolute inset-0 bg-cover bg-center transition-[filter] duration-1000"
             style={{
-              backgroundImage: `url(${shown.url})`,
+              backgroundImage: cssUrl(shown.url),
               filter: `brightness(${(0.02 + overlayOpacity * 0.98).toFixed(3)}) contrast(1.1) sepia(0.2)`,
             }}
           >
@@ -103,12 +104,12 @@ export function ArtworkCanvas({ artwork, luminance, warmth, grainIntensity }: Ar
                 transparenttextures.com at runtime. */}
             <div
               className="pointer-events-none absolute inset-0 opacity-30 mix-blend-overlay"
-              style={{ backgroundImage: `url(${paperTexture})` }}
+              style={{ backgroundImage: cssUrl(paperTexture) }}
             />
             <div
               className="pointer-events-none absolute inset-0 mix-blend-soft-light transition-opacity duration-500"
               style={{
-                backgroundImage: `url(${grainTexture})`,
+                backgroundImage: cssUrl(grainTexture),
                 opacity: (grainIntensity / 100) * 0.8,
               }}
             />

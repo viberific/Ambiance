@@ -4,6 +4,7 @@ import {
   displayName,
   isIpv4,
   normaliseSensorName,
+  sensorFromStatus,
   sensorTargets,
   statusUrl,
   subnetOf,
@@ -163,5 +164,30 @@ describe('settings normalisation', () => {
   it('returns defaults for junk input', () => {
     expect(normaliseSettings(null)).toEqual(DEFAULT_SETTINGS);
     expect(normaliseSettings('nope')).toEqual(DEFAULT_SETTINGS);
+  });
+});
+
+describe('sensorFromStatus', () => {
+  const status = {
+    id: 'AA:BB',
+    name: 'Den',
+    lux: 1,
+    temp: 2,
+    motion: false,
+    hostname: 'ambient-aabb',
+  } as Parameters<typeof sensorFromStatus>[0];
+
+  it('keeps a dotted-quad as the address', () => {
+    expect(sensorFromStatus(status, '192.168.1.50').ip).toBe('192.168.1.50');
+  });
+
+  it('does not duplicate the sensor own mDNS name as an address', () => {
+    expect(sensorFromStatus(status, 'ambient-aabb.local').ip).toBe('');
+  });
+
+  it('keeps any other address that answered, so the sensor can be reached again', () => {
+    const sensor = sensorFromStatus(status, 'localhost:8080');
+    expect(sensor.ip).toBe('localhost:8080');
+    expect(sensorTargets(sensor)).toContain('localhost:8080');
   });
 });

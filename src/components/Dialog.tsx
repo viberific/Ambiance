@@ -3,7 +3,14 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { BUTTON_DANGER, BUTTON_PRIMARY, BUTTON_SECONDARY, FIELD, cx } from './ui/styles';
+import {
+  BUTTON_DANGER,
+  BUTTON_PRIMARY,
+  BUTTON_SECONDARY,
+  FIELD,
+  GLASS_PANEL,
+  cx,
+} from './ui/styles';
 
 /**
  * WEB-17: the app used window.alert() and window.confirm() for pairing errors,
@@ -90,7 +97,12 @@ export function Dialog({ request, onClose }: Props) {
 
   const actions: DialogAction[] = request.actions?.length
     ? request.actions
-    : [{ label: 'OK', variant: 'primary' }];
+    : // Beside a text box the only other thing to do is back out. This used to
+      // be a second gold "OK" next to the gold "Save", which read as two ways
+      // to confirm when one of them actually threw the typing away.
+      request.input
+      ? [{ label: 'Cancel' }]
+      : [{ label: 'OK', variant: 'primary' }];
 
   /*
    * Close first, then act. An action that opens a follow-up dialog (a
@@ -113,7 +125,7 @@ export function Dialog({ request, onClose }: Props) {
       role="dialog"
       aria-modal="true"
       aria-labelledby="ambient-dialog-title"
-      className="animate-dialog-backdrop fixed inset-0 z-[100] flex items-center justify-center bg-black/80 px-8 backdrop-blur-sm"
+      className="fixed inset-0 z-[100] flex items-center justify-center px-8"
       onKeyDown={(event) => {
         trapFocus(event);
         if (event.key === 'Escape' || event.key === 'Backspace') {
@@ -125,9 +137,15 @@ export function Dialog({ request, onClose }: Props) {
         }
       }}
     >
+      {/* A sibling, not a parent, of the panel — see the note in SettingsPanel. */}
+      <div aria-hidden="true" className="animate-dialog-backdrop absolute inset-0 bg-black/55" />
+
       <div
         ref={panelRef}
-        className="animate-dialog-panel w-full max-w-2xl rounded-2xl border border-white/15 bg-canvas-surface/95 p-10 shadow-[0_24px_80px_rgba(0,0,0,0.7)]"
+        className={cx(
+          GLASS_PANEL,
+          'animate-dialog-panel relative w-full max-w-2xl rounded-[1.75rem] p-10',
+        )}
       >
         <h2
           id="ambient-dialog-title"
@@ -135,7 +153,7 @@ export function Dialog({ request, onClose }: Props) {
         >
           {request.title}
         </h2>
-        <p className="mb-8 text-tv-sm leading-relaxed text-white/75">{request.message}</p>
+        <p className="mb-8 text-tv-sm leading-relaxed text-white/80">{request.message}</p>
 
         {request.input ? (
           <div className="mb-8">

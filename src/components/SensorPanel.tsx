@@ -8,7 +8,7 @@ import { KeyRound, Loader2, Plus, RefreshCw } from 'lucide-react';
 import { SettingTooltip } from './TvSlider';
 import { SensorListItem } from './sensor/SensorListItem';
 import { TelemetryReadout } from './sensor/TelemetryReadout';
-import { BUTTON, FIELD, SECTION_HEADING, cx } from './ui/styles';
+import { BUTTON, FIELD, GLASS_WELL, cx } from './ui/styles';
 import { describeOutcome } from '../lib/sensor';
 import {
   DEFAULT_ADMIN_USER,
@@ -22,6 +22,8 @@ import type { ConnectionState, SensorCallOutcome, SensorInfo, Telemetry } from '
 export interface SensorPanelProps {
   sensors: Record<string, SensorInfo>;
   selectedSensorId: string;
+  /** This TV's own pairing id, to tell "paired to us" from "paired elsewhere". */
+  tvId: string;
   telemetry: Telemetry;
   connection: ConnectionState;
   isScanning: boolean;
@@ -33,7 +35,7 @@ export interface SensorPanelProps {
   onForget: (id: string) => void;
   onRename: (id: string, name: string) => Promise<SensorCallOutcome>;
   onPair: (id: string) => Promise<SensorCallOutcome>;
-  onAddManual: (address: string) => Promise<SensorCallOutcome>;
+  onAddManual: (address: string) => Promise<{ outcome: SensorCallOutcome; sensorId: string }>;
   onSetCredentials: (user: string, password: string) => void;
   onChangePassword: (id: string, password: string) => Promise<SensorCallOutcome>;
   showDialog: (request: DialogRequest) => void;
@@ -43,6 +45,7 @@ export function SensorPanel(props: SensorPanelProps) {
   const {
     sensors,
     selectedSensorId,
+    tvId,
     telemetry,
     connection,
     isScanning,
@@ -182,13 +185,20 @@ export function SensorPanel(props: SensorPanelProps) {
       run(async () => {
         const address = manualAddress.trim();
         if (!address) return;
-        const outcome = await onAddManual(address);
+        const { outcome, sensorId } = await onAddManual(address);
         if (outcome === 'ok') {
           setManualAddress('');
           showDialog({ title: 'Sensor paired', message: 'The sensor is now paired to this TV.' });
           return;
         }
-        handleOutcome('', 'Add sensor', outcome);
+        /*
+         * WEB-44: this passed an empty id, so the "set a new password" prompt
+         * that follows a factory-fresh sensor had nothing to send the password
+         * to and always ended in "could not reach the sensor" — on the exact
+         * path a brand-new sensor takes.
+         */
+        if (sensorId) setManualAddress('');
+        handleOutcome(sensorId, 'Add sensor', outcome);
       }),
     [run, manualAddress, onAddManual, showDialog, handleOutcome],
   );
@@ -197,7 +207,9 @@ export function SensorPanel(props: SensorPanelProps) {
     (id: string, sensor: SensorInfo) => {
       if (id === selectedSensorId) return;
 
-      if (sensor.pairedTvId) {
+      // WEB-45: a sensor already paired to THIS TV was described as belonging
+      // to another one every time it was re-selected.
+      if (sensor.pairedTvId && sensor.pairedTvId !== tvId) {
         showDialog({
           title: 'Sensor paired elsewhere',
           message: 'This sensor is currently paired to another TV. Switch it to this one?',
@@ -212,7 +224,7 @@ export function SensorPanel(props: SensorPanelProps) {
       onSelect(id);
       void pairSensorById(id);
     },
-    [selectedSensorId, showDialog, pairSensorById, onSelect],
+    [selectedSensorId, tvId, showDialog, pairSensorById, onSelect],
   );
 
   const confirmForget = useCallback(
@@ -232,9 +244,9 @@ export function SensorPanel(props: SensorPanelProps) {
   const entries = Object.entries(sensors);
 
   return (
-    <section className="flex h-full min-h-0 flex-col gap-6">
+    <section className="flex h-full min-h-0 flex-col gap-5">
       <div className="flex shrink-0 items-center justify-between border-b border-white/10 pb-2">
-        <h3 className={cx(SECTION_HEADING, 'border-0 pb-0')}>
+        <h3 className="flex items-center gap-2 text-tv-xs font-bold tracking-[0.3em] text-canvas-gold uppercase">
           Sensors &amp; Telemetry
           <SettingTooltip text="Find ambient sensors, choose the active one, and view live readings." />
         </h3>
@@ -243,7 +255,7 @@ export function SensorPanel(props: SensorPanelProps) {
           <button
             type="button"
             onClick={promptForCredentials}
-            className={cx(BUTTON, 'flex items-center gap-2')}
+            className={cx(BUTTON, 'flex items-center gap-2 py-2')}
             title="Set the sensor admin password used for pairing and renaming."
           >
             <KeyRound className="h-4 w-4" aria-hidden="true" />
@@ -254,7 +266,7 @@ export function SensorPanel(props: SensorPanelProps) {
             type="button"
             onClick={onRescan}
             disabled={isScanning}
-            className={cx(BUTTON, 'flex items-center gap-2 disabled:opacity-50')}
+            className={cx(BUTTON, 'flex items-center gap-2 py-2 disabled:opacity-50')}
           >
             {isScanning ? (
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
@@ -267,7 +279,7 @@ export function SensorPanel(props: SensorPanelProps) {
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-[1.4fr_1fr] gap-8">
-        <div className="flex min-h-0 flex-col rounded-xl bg-white/5 p-5">
+        <div className={cx(GLASS_WELL, 'flex min-h-0 flex-col p-3')}>
           {/*
            * WEB-25: this was `max-h-[30vh]`, an arbitrary fraction of the
            * screen that one of the old (broken) media queries then clamped to
@@ -282,7 +294,8 @@ export function SensorPanel(props: SensorPanelProps) {
            * own — without it a D-pad cannot scroll this at all.
            */}
           <div
-            className="tv-scroll min-h-0 flex-1"
+            // Padding leaves room for focus rings inside the scroll clip.
+            className="tv-scroll min-h-0 flex-1 rounded-xl p-2"
             tabIndex={0}
             role="region"
             aria-label="Discovered sensors"
@@ -290,7 +303,7 @@ export function SensorPanel(props: SensorPanelProps) {
             {entries.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
                 <p className="text-tv-sm font-bold text-canvas-gold uppercase">No sensors found</p>
-                <p className="max-w-md text-tv-xs leading-relaxed text-white/50">
+                <p className="max-w-md text-tv-xs leading-relaxed text-white/65">
                   Power on your ambient sensor, then connect a phone to the
                   <span className="text-canvas-sage"> “{SETUP_PORTAL_SSID}” </span>
                   Wi-Fi network to put it on your home network. Or enter its address below.
@@ -318,7 +331,7 @@ export function SensorPanel(props: SensorPanelProps) {
           </div>
 
           {/* Pinned below the scroller so it is always reachable. */}
-          <div className="mt-4 flex shrink-0 items-center gap-3">
+          <div className="mt-3 flex shrink-0 items-center gap-3 px-2 pb-2">
             <input
               type="text"
               value={manualAddress}

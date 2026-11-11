@@ -4,6 +4,8 @@
 import { useCallback, useRef, useState } from 'react';
 import { Info } from 'lucide-react';
 
+import { cx } from './ui/styles';
+
 /**
  * WEB-23: this control had no ARIA role, no value semantics and no label
  * association, so it was invisible to accessibility services and to Android
@@ -21,8 +23,6 @@ export interface TvSliderProps {
   suffix?: string;
   gradientClasses: string;
   thumbColor: string;
-  /** Overrides thumb positioning for bipolar scales such as warmth. */
-  thumbLeftCalc?: string;
   onChange: (value: number) => void;
   onSave?: (value: number) => void;
 }
@@ -34,7 +34,7 @@ export function SettingTooltip({ text }: { text: string }) {
         tabIndex={0}
         role="note"
         aria-label={text}
-        className="tv-focusable inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full border border-canvas-gold/35 bg-canvas-gold/12 text-canvas-gold"
+        className="tv-focusable inline-flex h-5 w-5 cursor-help items-center justify-center rounded-full border border-white/15 bg-white/10 text-canvas-gold/90"
       >
         <Info className="h-3 w-3" aria-hidden="true" />
       </span>
@@ -47,7 +47,7 @@ export function SettingTooltip({ text }: { text: string }) {
        */}
       <span
         role="tooltip"
-        className="pointer-events-none absolute top-7 left-0 z-50 w-max max-w-64 rounded-lg border border-white/20 bg-black/95 px-3 py-2 text-tv-xs leading-relaxed tracking-[0.08em] text-white/85 uppercase opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+        className="pointer-events-none absolute top-7 left-0 z-50 w-max max-w-64 translate-y-1 rounded-xl border border-white/15 bg-canvas-ink/92 px-4 py-3 text-tv-xs leading-relaxed font-normal tracking-normal text-white/85 normal-case opacity-0 shadow-[0_0.75rem_2rem_rgba(0,0,0,0.45)] transition-[opacity,transform] duration-200 group-focus-within:translate-y-0 group-focus-within:opacity-100 group-hover:translate-y-0 group-hover:opacity-100"
       >
         {text}
       </span>
@@ -66,7 +66,6 @@ export function TvSlider(props: TvSliderProps) {
     suffix = '',
     gradientClasses,
     thumbColor,
-    thumbLeftCalc,
     onChange,
     onSave,
   } = props;
@@ -74,10 +73,17 @@ export function TvSlider(props: TvSliderProps) {
   const [isEditing, setIsEditing] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  /*
+   * WEB-42: this ran on every blur, edited or not. Simply moving the remote
+   * past Brightness on the way to something else "saved" the current values as
+   * the learned look for the room's present light level, which quietly froze
+   * the automatic brightness for that level. Only an actual adjustment saves.
+   */
   const commit = useCallback(() => {
+    if (!isEditing) return;
     setIsEditing(false);
     onSave?.(value);
-  }, [onSave, value]);
+  }, [isEditing, onSave, value]);
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -110,10 +116,12 @@ export function TvSlider(props: TvSliderProps) {
           break;
         case 'Home':
           event.preventDefault();
+          event.stopPropagation();
           onChange(min);
           break;
         case 'End':
           event.preventDefault();
+          event.stopPropagation();
           onChange(max);
           break;
         case 'ArrowUp':
@@ -138,15 +146,17 @@ export function TvSlider(props: TvSliderProps) {
         <span className="flex items-center gap-2">
           {label}
           {tooltip ? <SettingTooltip text={tooltip} /> : null}
-          {isEditing ? (
-            <span className="ml-1 animate-pulse text-white" aria-hidden="true">
-              (edit)
-            </span>
-          ) : null}
         </span>
-        <span className="font-mono text-tv-sm text-canvas-sage">
+        <span
+          className={cx(
+            'font-mono text-tv-sm transition-colors duration-200',
+            isEditing ? 'text-canvas-gold' : 'text-canvas-sage',
+          )}
+        >
+          {isEditing ? <span aria-hidden="true">‹ </span> : null}
           {value}
           {suffix}
+          {isEditing ? <span aria-hidden="true"> ›</span> : null}
         </span>
       </div>
 
@@ -159,10 +169,7 @@ export function TvSlider(props: TvSliderProps) {
         aria-valuemin={min}
         aria-valuemax={max}
         aria-valuetext={`${value}${suffix}`}
-        className={[
-          'tv-focusable relative flex h-6 cursor-pointer items-center rounded-full transition-all outline-none select-none',
-          isEditing ? 'scale-[1.02] ring-4 ring-white' : '',
-        ].join(' ')}
+        className="tv-focusable relative flex h-6 cursor-pointer items-center rounded-full outline-none select-none"
         onClick={() => {
           if (!isEditing) {
             setIsEditing(true);
@@ -172,12 +179,23 @@ export function TvSlider(props: TvSliderProps) {
         onBlur={commit}
         onKeyDown={handleKeyDown}
       >
-        <div className={`relative h-2.5 w-full rounded-full ${gradientClasses}`}>
+        {/* The track is a glass groove; the tint on top says what the control does. */}
+        <div
+          className={cx(
+            'relative w-full rounded-full bg-white/10 shadow-[inset_0_0.0625rem_0.125rem_rgba(0,0,0,0.35)] transition-[height] duration-200',
+            isEditing ? 'h-3.5' : 'h-2.5',
+          )}
+        >
+          <div className={`absolute inset-0 rounded-full ${gradientClasses}`} />
           <div
-            className="pointer-events-none absolute top-1/2 h-5 w-5 -translate-y-1/2 rounded-full border-4 border-canvas-surface transition-all duration-200"
+            className={cx(
+              'pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white/80 shadow-[0_0.125rem_0.5rem_rgba(0,0,0,0.45)] transition-all duration-200',
+              isEditing ? 'h-7 w-7' : 'h-5 w-5',
+            )}
             style={{
               backgroundColor: thumbColor,
-              left: thumbLeftCalc ?? `calc(${percent}% - 0.625rem)`,
+              left: `${percent}%`,
+              boxShadow: isEditing ? `0 0 1.25rem ${thumbColor}` : undefined,
             }}
           />
         </div>

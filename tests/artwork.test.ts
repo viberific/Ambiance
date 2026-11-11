@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { LocalMediaLibrary, portableArtworkUrl, resolveArtworkUrl } from '../src/lib/artwork';
+import {
+  LocalMediaLibrary,
+  cssUrl,
+  portableArtworkUrl,
+  resolveArtworkUrl,
+} from '../src/lib/artwork';
 
 /*
  * AND-15: the screensaver renders in a second WebView on a file:// origin. It
@@ -101,5 +106,17 @@ describe('LocalMediaLibrary', () => {
       URL.createObjectURL = originalCreate;
       URL.revokeObjectURL = originalRevoke;
     }
+  });
+});
+
+describe('cssUrl', () => {
+  it('quotes addresses so inlined SVG data URIs survive as CSS', () => {
+    const inlined =
+      "data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1 1'%3e";
+    expect(cssUrl(inlined)).toBe(`url("${inlined}")`);
+  });
+
+  it('escapes the characters that would end the quoted string', () => {
+    expect(cssUrl('a"b\\c')).toBe('url("a\\"b\\\\c")');
   });
 });

@@ -118,8 +118,9 @@ function requireAuth(req: Request, res: Response): boolean {
     authLockStartMs = null;
   }
 
-  const fail = () => {
-    failedAuthCount += 1;
+  // FW-16: a request with no password at all is not a wrong guess.
+  const fail = (counts = true) => {
+    if (counts) failedAuthCount += 1;
     if (failedAuthCount >= 5) {
       authLockStartMs = Date.now();
       failedAuthCount = 0;
@@ -132,6 +133,7 @@ function requireAuth(req: Request, res: Response): boolean {
   };
 
   const header = req.headers.authorization ?? '';
+  if (!header) return fail(false);
   if (!header.startsWith('Basic ')) return fail();
 
   const decoded = Buffer.from(header.slice(6), 'base64').toString('utf8');

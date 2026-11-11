@@ -101,6 +101,7 @@ resist editing individual components:
 | The same colour in JS (slider thumbs) | `src/lib/theme.ts` → `BRAND` | Inline styles only |
 | All text sizes | `src/index.css` → `@theme` → `--text-tv-*` | All text, relative to the scale |
 | Every button / input / chip / toggle | `src/components/ui/styles.ts` | Every control everywhere |
+| How frosted / see-through the glass is | `src/components/ui/styles.ts` → `GLASS_*` | Menu, dialogs, pills, cards |
 
 Changing the accent colour is genuinely a one-line edit. Do not reintroduce
 hardcoded hex values like `#D4CDA4` into components — use `text-canvas-gold`,
@@ -202,6 +203,16 @@ Do not undo them. `CHANGELOG.md` has the full history if you need the why.
     scroll, and do not let it resize per section. The only two scroll boxes are
     the sensor list and the release notes, both genuinely unbounded, and both
     need `tabIndex` or a remote cannot scroll them at all.
+
+18. **Only `GLASS_PANEL` and `GLASS_POPOVER` blur, and a blurred surface never
+    sits inside a parent that fades or is itself blurred.** A fading or
+    filtered parent cuts the blur off from the artwork, so the glass goes flat;
+    stacked blurs drop frames on a TV box. Things inside a panel use the plain
+    translucent fills (`GLASS_CARD`, `GLASS_WELL`). Dimming layers are siblings
+    of the panel, not wrappers.
+19. **A CSS `background-image` address goes through `cssUrl()`.** The build
+    inlines small SVGs as `data:` addresses full of spaces and quotes; unquoted,
+    the browser silently drops them and bundled art vanishes.
 
 ---
 
