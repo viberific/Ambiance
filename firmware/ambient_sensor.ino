@@ -26,7 +26,7 @@
 
 /* ------------------------------------------------------------------ config */
 
-static const char *FIRMWARE_VERSION = "phase6-hardened-v1";
+static const char *FIRMWARE_VERSION = "phase6-hardened-v2";
 static const char *ADMIN_USER = "admin";
 static const char *DEFAULT_ADMIN_PASSWORD = "changeme";
 static const char *SETUP_PORTAL_SSID = "Ambient Setup";
@@ -85,6 +85,8 @@ unsigned long resetPressStartMs = 0;
 /* OTA */
 bool otaChecksumActive = false;
 bool otaValidationFailed = false;
+/* FW-19: true only once an image has been fully written, checked and finalised. */
+bool otaImageReady = false;
 String otaFailureReason = "";
 char otaSha256Expected[65] = {0};
 unsigned char otaSha256Digest[32] = {0};
@@ -98,7 +100,7 @@ mbedtls_sha256_context otaSha256Ctx;
  * "not declared in this scope" errors. Explicit prototypes.
  */
 void sendCors();
-enum AuthResult { AUTH_OK, AUTH_LOCKED, AUTH_BAD };
+enum AuthResult { AUTH_OK, AUTH_LOCKED, AUTH_BAD, AUTH_MISSING };
 AuthResult checkAdminCredentials();
 bool requireAdminAuth();
 void eraseEverythingAndRestart();
@@ -264,7 +266,17 @@ String buildBroadcastName(const String &baseName) {
   trimmed.trim();
   trimmed.replace("\"", "");
   trimmed.replace("\\", "");
-  if (trimmed.length() > SENSOR_NAME_MAX) trimmed = trimmed.substring(0, SENSOR_NAME_MAX);
+  if (trimmed.length() > SENSOR_NAME_MAX) {
+    /*
+     * FW-18: the limit is counted in bytes, and an accented or non-Latin
+     * letter is two to four of them. Cutting at exactly 24 could slice one in
+     * half, leaving a stray byte that is not valid text; the name then showed
+     * with a broken character on the TV. Back up to the start of the letter.
+     */
+    size_t cut = SENSOR_NAME_MAX;
+    while (cut > 0 && ((uint8_t)trimmed.charAt(cut) & 0xC0) == 0x80) cut--;
+    trimmed = trimmed.substring(0, cut);
+  }
   trimmed.trim();
   if (trimmed.length() == 0) trimmed = "New Sensor";
   return trimmed + SENSOR_NAME_SUFFIX;
@@ -341,6 +353,7 @@ AuthResult checkAdminCredentials() {
   }
 
   String header = server.header("Authorization");
+  if (header.length() == 0) return AUTH_MISSING;
   if (!header.startsWith("Basic ")) return AUTH_BAD;
 
   String encoded = header.substring(6);
@@ -373,12 +386,21 @@ bool requireAdminAuth() {
     return false;
   }
 
-  if (result == AUTH_BAD) {
-    failedAuthCount++;
-    if (failedAuthCount >= AUTH_MAX_FAILURES) {
-      authLocked = true;
-      authLockStartMs = millis();
-      failedAuthCount = 0;
+  if (result == AUTH_BAD || result == AUTH_MISSING) {
+    /*
+     * FW-16: a request with no password at all used to count as a wrong guess.
+     * Every browser sends one of those before it shows its sign-in box, and
+     * the TV sends one whenever no password has been saved yet, so ordinary
+     * use could lock the owner out for a minute without a single wrong
+     * password being typed. Only an actual wrong password counts now.
+     */
+    if (result == AUTH_BAD) {
+      failedAuthCount++;
+      if (failedAuthCount >= AUTH_MAX_FAILURES) {
+        authLocked = true;
+        authLockStartMs = millis();
+        failedAuthCount = 0;
+      }
     }
     sendCors();
     server.sendHeader("WWW-Authenticate", "Basic realm=\"Ambient Sensor\"");
@@ -721,6 +743,7 @@ void handleOtaUpload() {
     otaValidationFailed = false;
     otaFailureReason = "";
     otaChecksumActive = false;
+    otaImageReady = false;
 
     /*
      * FW-10: the password used to be checked only in handleOtaFinish(), which
@@ -813,6 +836,8 @@ void handleOtaUpload() {
       Update.printError(Serial);
       otaValidationFailed = true;
       otaFailureReason = "could not finalise update";
+    } else {
+      otaImageReady = true;
     }
     return;
   }
@@ -834,10 +859,19 @@ void handleOtaFinish() {
   if (!requirePasswordRotationForSensitiveWrite()) return;
   sendCors();
 
-  if (otaValidationFailed || Update.hasError()) {
-    String reason = otaFailureReason.length() > 0 ? otaFailureReason : "update failed";
+  /*
+   * FW-19: success used to mean "nothing was flagged as failed". A request
+   * that carried no firmware file at all never runs the upload callback, so
+   * nothing was flagged, and the sensor answered "ok" and restarted without
+   * having installed anything. Success now requires a finished image.
+   */
+  if (otaValidationFailed || Update.hasError() || !otaImageReady) {
+    String reason = otaFailureReason.length() > 0
+                      ? otaFailureReason
+                      : (otaImageReady ? "update failed" : "no firmware file received");
     otaValidationFailed = false;
     otaFailureReason = "";
+    otaImageReady = false;
     server.send(400, "text/plain", reason);
     return;
   }
@@ -1073,15 +1107,37 @@ void loop() {
     float kelvin = (lux > 1.0f) ? tcs.calculateColorTemperature(r, g, b) : 0.0f;
     if (!isfinite(kelvin) || kelvin < 0) kelvin = 0;
 
+    /*
+     * FW-17, two faults in the smoothing:
+     *
+     * 1. A colour temperature of 0 means "too dark to measure", not "zero
+     *    kelvin", but it was averaged in as a number. Each time the lights went
+     *    on or off the reported value slid through 700K, 1400K, 2000K... on its
+     *    way, and the TV read that as very warm candlelight and tinted the
+     *    picture orange for a few seconds. "No reading" now passes straight
+     *    through, and the first real reading after it starts a fresh average.
+     *
+     * 2. Both values are sent as 16-bit numbers. Direct sun on the sensor, or a
+     *    wild colour estimate, can exceed 65535, and converting a too-large
+     *    float is undefined: in practice it wrapped round and reported a
+     *    sunlit room as nearly dark. Both are capped first.
+     */
+    const float alpha = 0.25f;
     if (!haveFirstSample) {
       luxAverage = lux;
       tempAverage = kelvin;
       haveFirstSample = true;
     } else {
-      const float alpha = 0.25f;
       luxAverage = alpha * lux + (1.0f - alpha) * luxAverage;
-      tempAverage = alpha * kelvin + (1.0f - alpha) * tempAverage;
+      if (kelvin <= 0.0f || tempAverage <= 0.0f) {
+        tempAverage = kelvin;
+      } else {
+        tempAverage = alpha * kelvin + (1.0f - alpha) * tempAverage;
+      }
     }
+
+    if (luxAverage > 65535.0f) luxAverage = 65535.0f;
+    if (tempAverage > 65535.0f) tempAverage = 65535.0f;
 
     currentLux = (uint16_t)(luxAverage + 0.5f);
     currentTemp = (uint16_t)(tempAverage + 0.5f);

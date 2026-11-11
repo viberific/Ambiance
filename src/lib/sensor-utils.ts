@@ -135,11 +135,25 @@ export function telemetryFrom(status: SensorStatus): Telemetry {
   };
 }
 
+/**
+ * WEB-46: a sensor added by typing something that is neither a dotted-quad nor
+ * its own mDNS name (a router-assigned name, or `localhost:8080` for the mock)
+ * was saved with no address at all. The very next poll could only try
+ * `<hostname>.local`, so the sensor paired and then immediately went "lost".
+ * Whatever address actually answered is kept as the fallback.
+ */
+function addressFrom(status: SensorStatus, target: string): string {
+  if (isIpv4(target)) return target;
+  const own = (status.hostname || '').replace(/\.local$/, '');
+  if (own && (target === own || target === `${own}.local`)) return '';
+  return target;
+}
+
 export function sensorFromStatus(status: SensorStatus, target: string): SensorInfo {
   return {
     id: status.id,
     name: status.name || 'Unknown Sensor',
-    ip: isIpv4(target) ? target : '',
+    ip: addressFrom(status, target),
     hostname: status.hostname || undefined,
     lastSeen: Date.now(),
     pairedTvId: status.pairedTvId || undefined,

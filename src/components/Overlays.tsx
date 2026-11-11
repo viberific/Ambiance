@@ -128,7 +128,7 @@ export function Overlays(props: OverlaysProps) {
           unpaired TV from a working one. This chip states it plainly.
         */}
         {!compact && connection !== 'connected' ? (
-          <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/50 px-4 py-2 text-tv-xs font-bold tracking-[0.22em] text-white/60 uppercase">
+          <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/25 px-4 py-2 text-tv-xs tracking-[0.22em] text-white/70 uppercase shadow-[inset_0_0.0625rem_0_rgba(255,255,255,0.1)]">
             <WifiOff className="h-3.5 w-3.5" aria-hidden="true" />
             {connection === 'searching' ? 'Looking for sensor' : 'No sensor connected'}
           </div>

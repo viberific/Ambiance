@@ -466,6 +466,64 @@ overflow. The D-pad path was walked with the keyboard only.
 
 ---
 
+## 1.6.0 — Glass interface, and a second audit pass (2026-11-11)
+
+### The look
+
+| ID | Change | Where |
+| --- | --- | --- |
+| **WEB-40** | The whole interface is translucent glass. The settings menu and dialogs are a frosted pane over a blurred view of the artwork; everything inside is a thin wash of white. "Selected" is a soft gold or sage tint rather than a solid block, so it can never be confused with the gold focus ring, which now also carries a soft halo. Sliders are a glass groove whose thumb grows and glows while being adjusted. Moving between sections drifts the new pane in. Tooltips are sentence case. | `src/components/ui/styles.ts`, `src/index.css`, every component |
+
+Two rules fell out of doing this, now in CLAUDE.md as invariant 18: only
+`GLASS_PANEL` / `GLASS_POPOVER` blur, and nothing that fades may be a *parent*
+of a blurred surface (the dimming layer behind the menu and dialogs is a
+sibling for that reason).
+
+### App fixes
+
+| ID | Fix | Where |
+| --- | --- | --- |
+| **WEB-52** | **Built-in pictures and paper textures never rendered in the installed app.** `url(...)` was written unquoted, and the build inlines small SVGs as `data:` addresses containing spaces and quotes, so the browser discarded the declaration. An offline TV showed a blank dark screen and the Grain slider did nothing. | `src/lib/artwork.ts`, `src/components/ArtworkCanvas.tsx` |
+| **WEB-41** | The Close button could not be reached with a remote: Up/Down wrapped around the five sections forever. The rail now ends at Close. | `src/components/SettingsPanel.tsx` |
+| **WEB-42** | Moving the remote *past* Brightness or Warmth saved the current values as the learned look for that light level. Only a real adjustment saves now. | `src/components/TvSlider.tsx` |
+| **WEB-43** | Media highlighted "Local Albums" after every restart while showing curated art. | `src/components/settings/MediaSection.tsx` |
+| **WEB-44** | Adding a factory-fresh sensor by address led to a "set a new password" prompt that always failed, because it had no sensor to send it to. | `src/components/SensorPanel.tsx`, `src/hooks/useSensorNetwork.ts` |
+| **WEB-45** | Re-selecting a sensor already paired to this TV claimed it belonged to another TV. | `src/components/SensorPanel.tsx` |
+| **WEB-46** | A sensor added by a name that was not an IP address was saved with no address and went "lost" immediately (this included the mock at `localhost:8080`). | `src/lib/sensor-utils.ts` |
+| **WEB-47** | One missed reading meant "sensor lost", which woke a sleeping screen and restarted the sleep countdown. Four in a row are needed now. The address that last answered is also tried first, instead of waiting out failed `.local` lookups every second. | `src/hooks/useSensorTelemetry.ts`, `src/lib/sensor.ts` |
+| **WEB-48** | The screensaver snapshot was written to storage every second. | `src/hooks/useDreamPublisher.ts` |
+| **WEB-49** | A queued rename with a wrong password was retried every second forever, keeping the sensor permanently locked out. | `src/hooks/useSensorNetwork.ts` |
+| **WEB-50** | With no sensor, hand-set brightness and warmth were forgotten on restart, and were filed as the learned look for a pitch-dark room. | `src/hooks/useDisplayState.ts` |
+| **WEB-51** | Back with a dialog open closed the menu underneath and left the dialog floating. | `src/hooks/useTvInput.ts` |
+| — | Weather no longer blinks to "Locating…" every 15 minutes or blanks on one failed refresh. Password dialogs offer Save / Cancel rather than two gold buttons. Focus rings are no longer clipped at the edge of the pane. | `src/hooks/useWeather.ts`, `src/components/Dialog.tsx` |
+
+### Sensor firmware (`phase6-hardened-v2`, needs a reflash — none of it urgent)
+
+| ID | Fix |
+| --- | --- |
+| **FW-16** | A request with no password no longer counts toward the five-strike lockout. Browsers and an unconfigured TV send those routinely. Mirrored in the mock. |
+| **FW-17** | "Too dark to measure" (0 K) is no longer averaged in as a number, which made the reported colour temperature slide through candlelight values whenever the lights changed. Lux and Kelvin are capped before the 16-bit conversion; direct sun could wrap round to "dark". |
+| **FW-18** | A name is never cut in the middle of an accented or non-Latin letter. |
+| **FW-19** | An OTA request with no file no longer answers "ok" and restarts. |
+
+### Verified
+
+- `npm run verify` green: 90 tests.
+- The production build driven in a real browser at 1920x1080: all five
+  sections, a dialog, a tooltip and a slider mid-adjustment were looked at;
+  bundled art and textures render; the rail reaches Close and returns.
+
+### Not verified here
+
+- The firmware was not compiled locally this time (no toolchain in this
+  environment); CI compiles it on push. Nothing ran on a physical ESP32.
+- Blur performance on a real TV chipset. Two surfaces blur, and only while a
+  menu is open, but a low-end box is the place this would show.
+- D-pad movement inside a pane still relies on the TV WebView's own spatial
+  navigation, as before.
+
+---
+
 ## 1.5.0 — Audit pass: sleep, albums, and a sensor firmware hardening (2026-10-23)
 
 ### App

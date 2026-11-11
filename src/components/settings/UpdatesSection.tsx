@@ -5,7 +5,7 @@
 import { ArrowDownToLine, Check, RefreshCw, ShieldAlert, TriangleAlert } from 'lucide-react';
 
 import { SettingTooltip } from '../TvSlider';
-import { BUTTON, BUTTON_PRIMARY, SECTION_HEADING, cx } from '../ui/styles';
+import { BUTTON, BUTTON_PRIMARY, GLASS_CARD, SECTION_HEADING, cx } from '../ui/styles';
 import { formatBytes } from '../../lib/updates';
 import type { UseAppUpdateResult } from '../../hooks/useAppUpdate';
 
@@ -37,7 +37,7 @@ function StatusLine({ update }: { update: UseAppUpdateResult }) {
 
   if (status.state === 'downloading') {
     return (
-      <p className="text-tv-sm text-white/70">
+      <p className="text-tv-sm text-white/80">
         Downloading version {status.versionName}
         {status.progress >= 0 ? ` — ${status.progress}%` : '…'}
       </p>
@@ -45,7 +45,7 @@ function StatusLine({ update }: { update: UseAppUpdateResult }) {
   }
 
   if (status.state === 'verifying') {
-    return <p className="text-tv-sm text-white/70">Checking the download is intact…</p>;
+    return <p className="text-tv-sm text-white/80">Checking the download is intact…</p>;
   }
 
   if (status.state === 'ready') {
@@ -58,14 +58,14 @@ function StatusLine({ update }: { update: UseAppUpdateResult }) {
 
   if (status.state === 'installing') {
     return (
-      <p className="text-tv-sm text-white/70">
+      <p className="text-tv-sm text-white/80">
         Follow the prompt on screen to finish installing. The app will restart.
       </p>
     );
   }
 
   if (checkState === 'checking') {
-    return <p className="text-tv-sm text-white/50">Looking for a newer version…</p>;
+    return <p className="text-tv-sm text-white/65">Looking for a newer version…</p>;
   }
 
   if (checkState === 'error') {
@@ -93,7 +93,7 @@ function StatusLine({ update }: { update: UseAppUpdateResult }) {
            * a scroll box — tabIndex is what lets a remote actually scroll it.
            */
           <p
-            className="tv-scroll min-h-0 flex-1 pr-2 text-tv-xs leading-relaxed whitespace-pre-line text-white/45"
+            className="tv-scroll min-h-0 flex-1 pr-2 text-tv-xs leading-relaxed whitespace-pre-line text-white/65"
             tabIndex={0}
             role="region"
             aria-label="Release notes"
@@ -115,7 +115,7 @@ function StatusLine({ update }: { update: UseAppUpdateResult }) {
   }
 
   return (
-    <p className="text-tv-sm text-white/40">Last checked {relativeDay(update.lastCheckedAt)}.</p>
+    <p className="text-tv-sm text-white/60">Last checked {relativeDay(update.lastCheckedAt)}.</p>
   );
 }
 
@@ -134,7 +134,7 @@ export function UpdatesSection({ update, onInteract }: UpdatesSectionProps) {
           Software Update
           <SettingTooltip text="Installs new versions of Ambient Canvas straight from the TV." />
         </h3>
-        <p className="text-tv-sm text-white/40">
+        <p className="text-tv-sm text-white/60">
           Updates install on the TV. This preview is running in a browser, which cannot install
           apps.
         </p>
@@ -156,9 +156,14 @@ export function UpdatesSection({ update, onInteract }: UpdatesSectionProps) {
       </h3>
 
       {/* Fixed row layout, no breakpoints — see the note in DisplaySection. */}
-      <div className="flex min-h-0 flex-1 flex-row items-start justify-between gap-8 rounded-2xl border border-white/10 bg-black/20 p-8">
+      <div
+        className={cx(
+          GLASS_CARD,
+          'flex min-h-0 flex-1 flex-row items-start justify-between gap-8 p-8',
+        )}
+      >
         <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
-          <p className="font-mono text-tv-xs tracking-[0.2em] text-white/35 uppercase">
+          <p className="font-mono text-tv-xs tracking-[0.2em] text-white/55 uppercase">
             Installed{installedVersionName ? ` — version ${installedVersionName}` : ''}
           </p>
           <StatusLine update={update} />

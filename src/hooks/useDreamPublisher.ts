@@ -22,9 +22,20 @@ export function useDreamPublisher(state: DreamState): void {
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  /*
+   * WEB-48: this republished whenever the snapshot object changed, and the
+   * snapshot carries the live sensor reading, which is a new object every
+   * second. So the TV wrote the screensaver snapshot to its flash storage once
+   * a second, around the clock. The screensaver never draws the raw reading,
+   * so it is left out of the "has anything changed" test; the 30-second timer
+   * below still keeps it reasonably fresh.
+   */
+  const { telemetry: _telemetry, ...visible } = state;
+  const fingerprint = JSON.stringify(visible);
+
   useEffect(() => {
     publishDreamState(stateRef.current);
-  }, [state]);
+  }, [fingerprint]);
 
   useEffect(() => {
     const timer = setInterval(() => publishDreamState(stateRef.current), PUBLISH_INTERVAL_MS);

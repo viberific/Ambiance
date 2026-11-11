@@ -48,7 +48,9 @@ export function useWeather(enabled: boolean): UseWeatherResult {
 
   const run = useCallback(async () => {
     const id = ++generation.current;
-    setStatus('locating');
+    // Only the first lookup says "Locating…". The 15-minute refresh used to
+    // say it too, blinking the place name off the screen four times an hour.
+    setStatus((current) => (current === 'ready' ? current : 'locating'));
 
     const coords = await getCurrentPosition();
     if (id !== generation.current) return;
@@ -73,8 +75,9 @@ export function useWeather(enabled: boolean): UseWeatherResult {
     if (id !== generation.current) return;
 
     if (!reading) {
-      setStatus('error');
-      setTemperatureC(null);
+      // A failed refresh keeps the last good reading rather than blanking a
+      // working overlay over one dropped request; it is at most minutes old.
+      setStatus((current) => (current === 'ready' ? current : 'error'));
       return;
     }
 

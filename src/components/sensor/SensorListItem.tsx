@@ -40,19 +40,19 @@ export function SensorListItem(props: SensorListItemProps) {
   return (
     <div
       className={cx(
-        'mb-3 space-y-3 rounded-lg border p-4 transition-colors',
-        isActive ? 'border-canvas-gold bg-canvas-gold/10' : 'border-white/10',
+        'mb-3 space-y-2 rounded-2xl border p-3 transition-colors duration-300 last:mb-0',
+        isActive ? 'border-canvas-gold/45 bg-canvas-gold/[0.1]' : 'border-white/10 bg-white/[0.04]',
       )}
     >
       <div className="flex items-start justify-between gap-4">
         <div className="flex min-w-0 flex-col">
           <span className="truncate font-mono text-tv-sm text-white">{label}</span>
-          <span className="font-mono text-tv-xs text-white/40">
+          <span className="truncate font-mono text-tv-xs text-white/55">
             {sensor.hostname ? `${sensor.hostname}.local` : sensor.ip || 'unknown host'}
+            {sensor.firmwareVersion ? (
+              <span className="text-white/40"> · fw {sensor.firmwareVersion}</span>
+            ) : null}
           </span>
-          {sensor.firmwareVersion ? (
-            <span className="font-mono text-tv-xs text-white/30">fw {sensor.firmwareVersion}</span>
-          ) : null}
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
@@ -61,10 +61,10 @@ export function SensorListItem(props: SensorListItemProps) {
             disabled={isBusy}
             onClick={onSelect}
             className={cx(
-              'tv-focusable rounded px-5 py-2 text-tv-xs font-bold uppercase transition-all disabled:opacity-50',
+              'tv-focusable rounded-full border px-5 py-2 text-tv-xs font-bold tracking-[0.15em] uppercase transition-colors duration-200 disabled:opacity-50',
               isActive
-                ? 'bg-canvas-gold text-canvas-surface'
-                : 'bg-white/10 text-white/60 hover:bg-white/20',
+                ? 'border-canvas-gold/60 bg-canvas-gold/20 text-canvas-gold'
+                : 'border-white/12 bg-white/[0.07] text-white/75 hover:bg-white/15 focus-visible:bg-white/15',
             )}
           >
             {isActive ? 'Active' : 'Select'}
@@ -74,7 +74,7 @@ export function SensorListItem(props: SensorListItemProps) {
             type="button"
             aria-label={`Forget ${label}`}
             onClick={onForget}
-            className="tv-focusable rounded p-2 text-white/40 transition-colors hover:bg-white/10 hover:text-red-300"
+            className="tv-focusable rounded-full p-2 text-white/50 transition-colors hover:bg-white/10 hover:text-red-200 focus-visible:bg-white/10 focus-visible:text-red-200"
           >
             <Trash2 className="h-4 w-4" aria-hidden="true" />
           </button>
@@ -118,9 +118,9 @@ export function SensorListItem(props: SensorListItemProps) {
         <button
           type="button"
           onClick={onSecure}
-          className="tv-focusable w-full rounded-lg border border-amber-400/40 bg-amber-400/10 px-4 py-2 text-left text-tv-xs tracking-[0.15em] text-amber-200 uppercase transition-colors hover:bg-amber-400/20"
+          className="tv-focusable w-full truncate rounded-xl border border-amber-300/35 bg-amber-300/[0.12] px-4 py-2 text-left text-tv-xs tracking-[0.15em] text-amber-100 uppercase transition-colors hover:bg-amber-300/20 focus-visible:bg-amber-300/20"
         >
-          Factory password still set — select to secure this sensor
+          Factory password still set — press to secure
         </button>
       ) : null}
     </div>

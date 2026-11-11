@@ -44,7 +44,7 @@ export interface UseSensorNetworkResult {
   rescan: () => void;
   selectSensor: (id: string) => void;
   forgetSensor: (id: string) => void;
-  addManualSensor: (address: string) => Promise<SensorCallOutcome>;
+  addManualSensor: (address: string) => Promise<{ outcome: SensorCallOutcome; sensorId: string }>;
   setCredentials: (credentials: SensorCredentials | null) => void;
   rename: (id: string, name: string) => Promise<SensorCallOutcome>;
   pair: (id: string) => Promise<SensorCallOutcome>;
@@ -82,6 +82,7 @@ export function useSensorNetwork(): UseSensorNetworkResult {
   credentialsRef.current = credentials;
   const selectedIdRef = useRef(selectedSensorId);
   selectedIdRef.current = selectedSensorId;
+  const renameFlushing = useRef(false);
   const pendingRenamesRef = useRef(pendingRenames);
   pendingRenamesRef.current = pendingRenames;
 
@@ -185,10 +186,23 @@ export function useSensorNetwork(): UseSensorNetworkResult {
     onReachable: useCallback(
       (sensor: SensorInfo) => {
         const queued = pendingRenamesRef.current[sensor.id];
-        if (!queued) return;
-        void renameSensor(sensor, queued, credentialsRef.current).then((outcome) => {
-          if (outcome === 'ok') clearPendingRename(sensor.id);
-        });
+        if (!queued || renameFlushing.current) return;
+        /*
+         * WEB-49: this runs after every successful reading, i.e. once a second,
+         * and only ever let go of a queued rename when the sensor accepted it.
+         * With a wrong or missing password the sensor refused it every second,
+         * forever — and five refusals lock the sensor for a minute, so it
+         * stayed locked and could not be paired or renamed at all. One attempt
+         * at a time, and any definite answer ends the queue.
+         */
+        renameFlushing.current = true;
+        void renameSensor(sensor, queued, credentialsRef.current)
+          .then((outcome) => {
+            if (outcome !== 'unreachable') clearPendingRename(sensor.id);
+          })
+          .finally(() => {
+            renameFlushing.current = false;
+          });
       },
       [clearPendingRename],
     ),
@@ -284,24 +298,32 @@ export function useSensorNetwork(): UseSensorNetworkResult {
   );
 
   const addManualSensor = useCallback(
-    async (address: string): Promise<SensorCallOutcome> => {
-      const target = address.trim();
-      if (!target) return 'bad_request';
+    async (address: string): Promise<{ outcome: SensorCallOutcome; sensorId: string }> => {
+      // People type what the sensor's own page shows them: tolerate a pasted
+      // "http://" and a trailing path.
+      const target = address
+        .trim()
+        .replace(/^https?:\/\//i, '')
+        .replace(/\/.*$/, '');
+      if (!target) return { outcome: 'bad_request', sensorId: '' };
 
       const result = await probeTarget(target, 3000);
-      if (!result) return 'unreachable';
+      if (!result) return { outcome: 'unreachable', sensorId: '' };
 
       const sensor = sensorFromStatus(result.status, result.target);
+      const sensorId = sensor.id;
       upsertSensor(sensor);
 
-      if (sensor.pairedTvId && sensor.pairedTvId !== tvId) return 'already_paired_elsewhere';
+      if (sensor.pairedTvId && sensor.pairedTvId !== tvId) {
+        return { outcome: 'already_paired_elsewhere', sensorId };
+      }
 
       const outcome = await pairSensor(sensor, tvId, credentialsRef.current);
       if (outcome === 'ok') {
         upsertSensor({ ...sensor, pairedTvId: tvId });
         selectSensor(sensor.id);
       }
-      return outcome;
+      return { outcome, sensorId };
     },
     [tvId, upsertSensor, selectSensor],
   );

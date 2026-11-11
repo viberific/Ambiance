@@ -19,6 +19,8 @@ export interface UseTvInputOptions {
   /** Suppresses navigation while a modal owns the screen. */
   dialogOpen: boolean;
   onCloseMenu: () => void;
+  /** Dismisses the dialog on top, so Back peels off one layer at a time. */
+  onCloseDialog: () => void;
   onOpenMenu: () => void;
   onPrevious: () => void;
   onNext: () => void;
@@ -32,14 +34,15 @@ export interface UseTvInputResult {
 }
 
 export function useTvInput(options: UseTvInputOptions): UseTvInputResult {
-  const { menuOpen, dialogOpen, onCloseMenu, onOpenMenu, onPrevious, onNext } = options;
+  const { menuOpen, dialogOpen, onCloseMenu, onCloseDialog, onOpenMenu, onPrevious, onNext } =
+    options;
 
   const [uiVisible, setUiVisible] = useState(true);
   const uiTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const menuTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handlers = useRef({ onCloseMenu, onOpenMenu, onPrevious, onNext });
-  handlers.current = { onCloseMenu, onOpenMenu, onPrevious, onNext };
+  const handlers = useRef({ onCloseMenu, onCloseDialog, onOpenMenu, onPrevious, onNext });
+  handlers.current = { onCloseMenu, onCloseDialog, onOpenMenu, onPrevious, onNext };
 
   const showUi = useCallback(() => {
     setUiVisible(true);
@@ -77,11 +80,23 @@ export function useTvInput(options: UseTvInputOptions): UseTvInputResult {
   // The TV hardware back button closes the menu rather than exiting the app.
   useEffect(() => {
     const onPopState = () => {
-      if (menuOpen) handlers.current.onCloseMenu();
+      if (!menuOpen) return;
+      /*
+       * WEB-51: with a dialog open, Back closed the menu underneath it and
+       * left the dialog floating over the artwork. Back now dismisses the
+       * dialog only, and puts back the history entry it just consumed so the
+       * next press still closes the menu.
+       */
+      if (dialogOpen) {
+        handlers.current.onCloseDialog();
+        window.history.pushState({ ambientSettings: true }, '');
+        return;
+      }
+      handlers.current.onCloseMenu();
     };
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
-  }, [menuOpen]);
+  }, [menuOpen, dialogOpen]);
 
   /* ------------------------------------------------------------- key handling */
 

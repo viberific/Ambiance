@@ -9,6 +9,8 @@ import {
   CHIP,
   CHIP_OFF,
   CHIP_ON,
+  GLASS_CARD,
+  LABEL,
   SECTION_HEADING,
   TOGGLE,
   TOGGLE_OFF,
@@ -72,7 +74,7 @@ export function DisplaySection(props: DisplaySectionProps) {
           max={100}
           step={5}
           suffix="%"
-          gradientClasses="bg-gradient-to-r from-black/50 to-white/50"
+          gradientClasses="bg-linear-to-r from-black/40 to-white/60"
           thumbColor={BRAND.gold}
           onChange={(value) => {
             onLuminanceChange(value);
@@ -89,9 +91,8 @@ export function DisplaySection(props: DisplaySectionProps) {
           max={500}
           step={50}
           suffix="K"
-          gradientClasses="bg-gradient-to-r from-blue-400/25 via-white/10 to-orange-400/25"
+          gradientClasses="bg-linear-to-r from-sky-300/50 via-white/10 to-orange-300/60"
           thumbColor={BRAND.warm}
-          thumbLeftCalc={`calc(${50 + (warmth / 500) * 50}% - 0.625rem)`}
           onChange={(value) => {
             onWarmthChange(value);
             onInteract();
@@ -107,7 +108,7 @@ export function DisplaySection(props: DisplaySectionProps) {
           max={100}
           step={5}
           suffix="%"
-          gradientClasses="bg-gradient-to-r from-transparent to-white/30"
+          gradientClasses="bg-linear-to-r from-transparent to-canvas-sage/50"
           thumbColor={BRAND.sage}
           onChange={(value) => {
             setSetting('grainIntensity', value);
@@ -153,9 +154,9 @@ export function DisplaySection(props: DisplaySectionProps) {
          * independently and landed in a lopsided arrangement. Two labelled rows
          * instead — each label stays with the chips it belongs to.
          */}
-        <div className="flex flex-col justify-center gap-5 rounded-xl border border-white/10 bg-white/5 px-6 py-5">
+        <div className={cx(GLASS_CARD, 'flex flex-col justify-center gap-5 px-6 py-5')}>
           <div className="flex flex-col gap-2">
-            <span className="flex items-center gap-2 text-tv-xs font-bold tracking-[0.25em] text-white/55 uppercase">
+            <span className={cx(LABEL, 'flex items-center gap-2')}>
               Overlay Font
               <SettingTooltip text="Text style used by the time and weather overlays." />
             </span>
@@ -182,9 +183,7 @@ export function DisplaySection(props: DisplaySectionProps) {
           </div>
 
           <div className="flex flex-col gap-2">
-            <span className="text-tv-xs font-bold tracking-[0.25em] text-white/55 uppercase">
-              Units
-            </span>
+            <span className={LABEL}>Units</span>
             <div className="flex gap-2">
               {UNITS.map((unit) => (
                 <button
